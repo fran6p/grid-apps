@@ -4,9 +4,9 @@ kiri.lang['fr'] =
 kiri.lang['fr-fr'] = {
     // common keys and menus
     animate:        "animer",       // CAM animate button
-    arrange:        "organiser",     // layout workspace objects
+    arrange:        "organiser",    // layout workspace objects
     axis:           "axe",          // left object scale pop menu
-    clear:          "effacer",  // clear workspace (remove all objects)
+    clear:          "effacer",      // clear workspace (remove all objects)
     copy:           "copier",
     delete:         "supprimer",
     detail:         "détail",
@@ -63,13 +63,13 @@ kiri.lang['fr-fr'] = {
     dm_appp:        "Préférences d'Application",
 
     // CAM Tool Dialog
-    td_tyem:        "end",          // end mill
-    td_tybm:        "ball",         // ball mill
-    td_tytm:        "taper",        // taper mill
-    td_tonm:        "tool #",
-    td_shft:        "shaft",        // endmill shaft specs
-    td_flut:        "flute",        // endmill flute specs
-    td_tapr:        "taper",        // endmill taper specs
+    td_tyem:        "plat",          // end mill
+    td_tybm:        "boule",         // ball mill
+    td_tytm:        "v forme",       // taper mill
+    td_tonm:        "outil #",
+    td_shft:        "tige",        // endmill shaft specs
+    td_flut:        "flûte",        // endmill flute specs
+    td_tapr:        "cône",        // endmill taper specs
 
     // DEVICE dialog groups
     dv_gr_dev:      "périphérique",
@@ -250,7 +250,7 @@ kiri.lang['fr-fr'] = {
     sl_lbot_s:      "couches de base",
     sl_lbot_l:      ["nombre de couches solides", "à appliquer en", "bas de l'impression"],
     ad_adap_s:      "adaptive",
-    ad_adap_l:      ["utiliser des hauteurs de couche adaptatives", "avec "hauteur de couche" en maximum", "et "hauteur min" en minimum"],
+    ad_adap_l:      ["utiliser des hauteurs de couche adaptatives", "avec 'hauteur de couche' en maximum", "et 'hauteur min' en minimum"],
 
     // FDM SHELLS
     sl_shel_s:      "parois",
