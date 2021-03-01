@@ -102,6 +102,8 @@ kiri.lang['fr-fr'] = {
     dv_bedc_l:      "le plateau du matériel est circulaire",
     dv_belt_s:      "plateau tapis-roulant",
     dv_belt_l:      "plateau à impression continue",
+    dv_retr_s:      "rétraction firmware",
+    dv_retr_l:      ["le firmware supporte G10/G11"],   
     dv_fanp_s:      "refroidissement",
     dv_fanp_l:      "régler la puissance du ventilateur de refroidissement",
     dv_prog_s:      "progression",
