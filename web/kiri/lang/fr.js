@@ -26,7 +26,7 @@ kiri.lang['fr-fr'] = {
     prefs:          "préfs",        // left menu "preferences"
     preview:        "prévisualiser",
     recent:         "récent",
-    render:         "rendu",       // left render pop menu
+    render:         "rendu",        // left render pop menu
     reset:          "remettre",
     rotate:         "tourner",      // left rotate pop menu
     save:           "sauvegarder",
@@ -103,7 +103,7 @@ kiri.lang['fr-fr'] = {
     dv_belt_s:      "plateau tapis-roulant",
     dv_belt_l:      "plateau à impression continue",
     dv_retr_s:      "rétraction firmware",
-    dv_retr_l:      ["le firmware supporte G10/G11"],   
+    dv_retr_l:      ["le firmware supporte G10/G11"],
     dv_fanp_s:      "refroidissement",
     dv_fanp_l:      "régler la puissance du ventilateur de refroidissement",
     dv_prog_s:      "progression",

@@ -363,14 +363,6 @@
             case cca('i'): // file import
                 API.event.import();
                 break;
-            case cca('U'): // full settings url
-                storeSettingsToServer(true);
-                break;
-            case cca('u'): // full settings url
-                UC.prompt("settings id to load", "").then(id => {
-                    if (id) loadSettingsFromServer(id);
-                });
-                break;
             case cca('S'): // slice
             case cca('s'): // slice
                 if (evt.shiftKey) {
@@ -545,43 +537,6 @@
         }
 
         moveSelection(x, y, z, true);
-    }
-
-    function loadSettingsFromServer(tok) {
-        let hash = (tok || LOC.hash.substring(1)).split("/");
-        if (hash.length === 2) {
-            new moto.Ajax(function(reply) {
-                if (reply) {
-                    let res = JSON.parse(reply);
-                    if (res && res.ver && res.rec) {
-                        let set = API.util.b64dec(res.rec);
-                        set.id = res.space;
-                        set.ver = res.ver;
-                        API.conf.put(set);
-                        API.event.settings();
-                        API.ui.sync();
-                        LOC.hash = '';
-                    }
-                }
-            }).request("/data/"+ hash[0] + "/" + hash[1]);
-        }
-    }
-
-    function storeSettingsToServer(display) {
-        let set = API.util.b64enc(settings());
-        new moto.Ajax(function(reply) {
-            if (reply) {
-                let res = JSON.parse(reply);
-                if (res && res.ver) {
-                    LOC.hash = res.space + "/" + res.ver;
-                    if (display)  {
-                        UC.alert(`unique settings id is: <b>${res.space}/${res.ver}</b>`);
-                    }
-                }
-            } else {
-                updateSpaceState();
-            }
-        }).request("/data/"+ settings().id + "/" + settings().ver, set);
     }
 
     function deviceExport(exp, name) {
@@ -1665,7 +1620,7 @@
             sliceHeight:         UC.newInput(LANG.sl_lahi_s, {title:LANG.sl_lahi_l, convert:UC.toFloat, modes:FDM}),
             sliceMinHeight:      UC.newInput(LANG.ad_minl_s, {title:LANG.ad_minl_l, bound:UC.bound(0,3.0), convert:UC.toFloat, modes:FDM, show: () => UI.sliceAdaptive.checked}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
-            sliceShells:         UC.newInput(LANG.sl_shel_s, {title:LANG.sl_shel_l, convert:UC.toInt, modes:FDM}),
+            sliceShells:         UC.newInput(LANG.sl_shel_s, {title:LANG.sl_shel_l, convert:UC.toFloat, modes:FDM}),
             sliceTopLayers:      UC.newInput(LANG.sl_ltop_s, {title:LANG.sl_ltop_l, convert:UC.toInt, modes:FDM}),
             sliceSolidLayers:    UC.newInput(LANG.sl_lsld_s, {title:LANG.sl_lsld_l, convert:UC.toInt, modes:FDM}),
             sliceBottomLayers:   UC.newInput(LANG.sl_lbot_s, {title:LANG.sl_lbot_l, convert:UC.toInt, modes:FDM}),
@@ -2435,9 +2390,6 @@
 
         UI.sync();
 
-        // load settings provided in url hash
-        loadSettingsFromServer();
-
         // clear alerts as they build up
         setInterval(API.event.alerts, 1000);
 
@@ -2561,6 +2513,7 @@
 
     // if a language needs to load, the script is injected and loaded
     // first.  once this loads, or doesn't, the initialization begins
+    let lang_load = false;
     let lang_set = undefined;
     let lang = SETUP.ln ? SETUP.ln[0] : SDB.getItem('kiri-lang') || KIRI.lang.get();
 
@@ -2570,10 +2523,11 @@
         let map = KIRI.lang.map(lang);
         let scr = DOC.createElement('script');
         // scr.setAttribute('defer',true);
-        scr.setAttribute('src',`/kiri/lang/${map}.js`);
+        scr.setAttribute('src',`/kiri/lang/${map}.js?${KIRI.version}`);
         (DOC.body || DOC.head).appendChild(scr);
         STATS.set('ll',lang);
         scr.onload = function() {
+            lang_load = true;
             KIRI.lang.set(map);
             UI.lang();
             init_one();
@@ -2586,8 +2540,10 @@
 
     // set to browser default which will be overridden
     // by any future script loads (above)
-    KIRI.lang.set();
-    UI.lang();
+    if (!lang_load) {
+        KIRI.lang.set();
+        UI.lang();
+    }
 
     // schedule init_one to run after all page content is loaded
     // unless a languge script is loading first, in which case it

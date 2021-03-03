@@ -278,6 +278,16 @@
             // create shells and diff inner fillable areas
             forSlices(0.0, 0.2, slice => {
                 let params = getRangeParameters(settings, slice.index);
+                let shellFrac = (params.sliceShells - (params.sliceShells | 0));
+                let sliceShells = params.sliceShells | 0;
+                if (ctrl.danger && shellFrac) {
+                    let v1 = shellFrac > 0.5 ? 1 - shellFrac : shellFrac;
+                    let v2 = 1 - v1;
+                    let parts = Math.round(v2/v1) + 1;
+                    let rem = slice.index % parts;
+                    let trg = shellFrac > 0.5 ? 1 : parts - 1;
+                    sliceShells += rem >= trg ? 1 : 0;
+                }
                 let first = slice.index === 0;
                 let isBottom = slice.index < spro.sliceBottomLayers;
                 let isTop = slice.index > slices.length - spro.sliceTopLayers-1;
@@ -286,7 +296,7 @@
                 let spaceMult = first ? spro.firstLayerLineMult || 1 : 1;
                 let offset = shellOffset * spaceMult;
                 let fillOff = fillOffset * spaceMult;
-                let count = isSynth ? 1 : params.sliceShells;
+                let count = isSynth ? 1 : sliceShells;
                 doShells(slice, count, offset, fillOff, {
                     vase: vaseMode,
                     thin: spro.detectThinWalls && !isSynth,
@@ -1269,10 +1279,9 @@
         let process = settings.process;
         let size = process.sliceSupportSize;
         let min = process.sliceSupportArea || 1;
-        let buf = new THREE.BufferGeometry();
-        buf.setAttribute('position', new THREE.BufferAttribute(widget.vertices, 3));
+        let geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(widget.vertices, 3));
         let mat = new THREE.MeshBasicMaterial();
-        let geo = new THREE.Geometry().fromBufferGeometry(buf);
         let rad = (Math.PI / 180);
         let deg = (180 / Math.PI);
         let angle = rad * settings.process.sliceSupportAngle;
@@ -1324,24 +1333,33 @@
                 point.added = true;
             }
         }
-        let filter = isBelt ? (f) => {
-            return f.normal.z < thresh && f.normal.y < -0.001;
-        } : (f) => {
-            return f.normal.z < thresh;
+        let filter = isBelt ? (norm) => {
+            return norm.z < thresh && norm.y < -0.001;
+        } : (norm) => {
+            return norm.z < thresh;
         };
-        geo.faces.filter(filter).forEach(face => {
-            let a = geo.vertices[face.a];
-            let b = geo.vertices[face.b];
-            let c = geo.vertices[face.c];
+        let { position } = geo.attributes;
+        let { itemSize, count, array } = position;
+        for (let i = 0; i<count; i += 3) {
+            let ip = i * itemSize;
+            let a = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
+            let b = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
+            let c = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
+            let norm = THREE.computeFaceNormal(a,b,c);
+            // limit to downward faces
+            if (!filter(norm)) {
+                continue;
+            }
             // skip tiny faces
+            let area = BASE.newPolygon().addPoints([a,b,c]).area();
             if (BASE.newPolygon().addPoints([a,b,c]).area() < min) {
-                return;
+                continue;
             }
             tp(new THREE.Vector3().add(a).add(b).add(c).divideScalar(3));
             tl(a,b);
             tl(b,c);
             tl(a,c);
-        });
+        }
         widget.supports = add;
         return add.length > 0;
     };

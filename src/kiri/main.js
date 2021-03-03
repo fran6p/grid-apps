@@ -1503,18 +1503,23 @@
         let outs = [];
         widgets.forEach(widget => {
             let mesh = widget.mesh;
-            let geo = new THREE.Geometry().fromBufferGeometry(mesh.geometry);
+            let geo = mesh.geometry;
             outs.push({geo, widget});
-            facets += geo.faces.length;
+            facets += geo.attributes.position.count;
         });
         let stl = new Uint8Array(80 + 4 + facets * 50);
         let dat = new DataView(stl.buffer);
         let pos = 84;
         dat.setInt32(80, facets, true);
-        outs.forEach(out => {
-            let { faces, vertices } = out.geo;
-            for (let i=0, il=faces.length; i<il; i++) {
-                let {a, b, c, normal} = faces[i];
+        for (let out of outs) {
+            let { position } = out.geo.attributes;
+            let pvals = position.array;
+            for (let i=0, il=position.count; i<il; i += 3) {
+                let pi = i * position.itemSize;
+                let p0 = new THREE.Vector3(pvals[pi++], pvals[pi++], pvals[pi++]);
+                let p1 = new THREE.Vector3(pvals[pi++], pvals[pi++], pvals[pi++]);
+                let p2 = new THREE.Vector3(pvals[pi++], pvals[pi++], pvals[pi++]);
+                let norm = THREE.computeFaceNormal(p0, p1, p2);
                 let xo = 0, yo = 0, zo = 0;
                 if (outs.length > 1) {
                     let {x, y, z} = out.widget.track.pos;
@@ -1522,21 +1527,21 @@
                     yo = y;
                     zo = z;
                 }
-                dat.setFloat32(pos +  0, normal.x, true);
-                dat.setFloat32(pos +  4, normal.y, true);
-                dat.setFloat32(pos +  8, normal.z, true);
-                dat.setFloat32(pos + 12, vertices[a].x + xo, true);
-                dat.setFloat32(pos + 16, vertices[a].y + yo, true);
-                dat.setFloat32(pos + 20, vertices[a].z + zo, true);
-                dat.setFloat32(pos + 24, vertices[b].x + xo, true);
-                dat.setFloat32(pos + 28, vertices[b].y + yo, true);
-                dat.setFloat32(pos + 32, vertices[b].z + zo, true);
-                dat.setFloat32(pos + 36, vertices[c].x + xo, true);
-                dat.setFloat32(pos + 40, vertices[c].y + yo, true);
-                dat.setFloat32(pos + 44, vertices[c].z + zo, true);
+                dat.setFloat32(pos +  0, norm.x, true);
+                dat.setFloat32(pos +  4, norm.y, true);
+                dat.setFloat32(pos +  8, norm.z, true);
+                dat.setFloat32(pos + 12, p0.x + xo, true);
+                dat.setFloat32(pos + 16, p0.y + yo, true);
+                dat.setFloat32(pos + 20, p0.z + zo, true);
+                dat.setFloat32(pos + 24, p1.x + xo, true);
+                dat.setFloat32(pos + 28, p1.y + yo, true);
+                dat.setFloat32(pos + 32, p1.z + zo, true);
+                dat.setFloat32(pos + 36, p2.x + xo, true);
+                dat.setFloat32(pos + 40, p2.y + yo, true);
+                dat.setFloat32(pos + 44, p2.z + zo, true);
                 pos += 50;
             }
-        });
+        }
         return stl;
     }
 

@@ -40,9 +40,13 @@
             let grps = widgets.map(w => w.group).uniq();
             if (grps.length > 1) {
                 let root = grps.shift();
+                let rpos = root[0].track.pos;
                 for (let grp of grps) {
                     for (let w of grp) {
+                        let wpos = w.track.pos;
                         w.group = root;
+                        w.moveMesh(rpos.x - wpos.x, rpos.y - wpos.y, rpos.z - wpos.z);
+                        w._move(rpos.x, rpos.y, rpos.z, true);
                         root.push(w);
                     }
                     groups.splice(groups.indexOf(grp),1);
@@ -542,22 +546,55 @@
     };
 
     PRO._mirror = function() {
-        this.setWireframe(false);
         this.clearSlices();
-        let vert = this.getGeoVertices();
-        for (let i=0; i<vert.length; i += 3) {
-            vert[i] = -vert[i];
+        this.setWireframe(false);
+        let geo = this.mesh.geometry, ot = this.track;
+        let pos = geo.attributes.position;
+        let arr = pos.array;
+        let count = pos.count;
+        // invert x
+        for (let i=0; i<count; i++) {
+            arr[i*3] = -arr[i*3];
         }
-        let geo = this.mesh.geometry,
-            o = this.track;
+        // invert face vertices
+        for (let i=0; i<count; i+=3) {
+            let x = arr[i*3+0];
+            let y = arr[i*3+1];
+            let z = arr[i*3+2];
+            arr[i*3+0] = arr[i*3+6];
+            arr[i*3+1] = arr[i*3+7];
+            arr[i*3+2] = arr[i*3+8];
+            arr[i*3+6] = x;
+            arr[i*3+7] = y;
+            arr[i*3+8] = z;
+        }
+        pos.needsUpdate = true;
         geo.computeFaceNormals();
         geo.computeVertexNormals();
-        o.mirror = !o.mirror;
+        ot.mirror = !ot.mirror;
         this.modified = true;
+        this.points = null;
     };
 
     PRO.getGeoVertices = function() {
-        return this.mesh.geometry.getAttribute('position').array;
+        let geo = this.mesh.geometry;
+        let pos = geo.getAttribute('position').array;
+        if (geo.index) {
+            let idx = geo.index.array;
+            let len = idx.length;
+            let p2 = new Float32Array(len * 3);
+            let inc = 0;
+            for (let i=0; i<len; i++) {
+                let iv = idx[i];
+                let ip = iv * 3;
+                p2[inc++] = pos[ip++];
+                p2[inc++] = pos[ip++];
+                p2[inc++] = pos[ip];
+            }
+            return p2;
+        } else {
+            return pos;
+        }
     };
 
     PRO.getPoints = function() {

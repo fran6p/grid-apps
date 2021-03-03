@@ -61,11 +61,11 @@
             if (!isCamMode) {
                 func.tabClear();
                 func.traceDone();
-                UI.label.slice.innerText = 'slice';
-                UI.label.preview.innerText = 'preview';
-                UI.label.export.innerText = 'export';
+                UI.label.slice.innerText = LANG.slice;
+                UI.label.preview.innerText = LANG.preview;
+                UI.label.export.innerText = LANG.export;
             } else {
-                UI.label.slice.innerText = 'start';
+                UI.label.slice.innerText = LANG.start;
             }
             // do not persist traces across page reloads
             func.traceClear();
