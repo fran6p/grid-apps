@@ -34,7 +34,9 @@ kiri.lang['fr-fr'] = {
     setup:          "setup",
     settings:       "paramètres",
     size:           "taille",
+    slice:          "slice",
     solid:          "solide",       // view type pop menu
+    start:          "start",
     tool:           "outil",
     tools:          "outils",       // CAM tool menu button
     top:            "haut",
@@ -211,6 +213,8 @@ kiri.lang['fr-fr'] = {
     op_free_l:      ["autoriser la disposition déplaçable","sans effet en mode laser"],
     op_spcr_s:      "espacement",
     op_spcr_l:      ["espacement entre les objets", "avec la disposition automatique", "en unités d'espace de travail"],
+    op_orth_s:      "orthographic",
+    op_orth_l:      ["orthographic display","requires page refresh"],
     op_invr_s:      "inverser zoom",
     op_invr_l:      ["inverser la molette de la souris", "faire défiler le zoom"],
     op_save_s:      "auto enregt",
