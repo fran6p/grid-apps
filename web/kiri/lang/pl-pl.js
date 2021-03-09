@@ -1,59 +1,59 @@
 // english. other language maps will defer to english
 // map for any missing key/value pairs
-kiri.lang['en'] =
-kiri.lang['en-us'] = {
+kiri.lang['pl'] =
+kiri.lang['pl-pl'] = {
     // common keys and menus
-    animate:        "animate",      // CAM animate button
-    arrange:        "arrange",      // layout workspace objects
-    axis:           "axis",         // left object scale pop menu
-    clear:          "clear",        // clear workspace (remove all objects)
-    copy:           "copy",
-    delete:         "delete",
-    detail:         "detail",
-    done:           "done",
-    enable:         "enable",
-    export:         "export",
-    files:          "files",
-    help:           "help",
-    ghost:          "ghost",        // left render pop menu (wireframe)
-    hide:           "hide",         // left render pop menu (invisible)
-    home:           "home",
+    animate:        "animacja",     // CAM animate button
+    arrange:        "rozmieść",     // layout workspace objects
+    axis:           "osie",         // left object scale pop menu
+    clear:          "wyczyść", //"czyszczenie z obiektów", // clear workspace (remove all objects)
+    copy:           "kopiowanie",
+    delete:         "kasowanie",
+    detail:         "szczegóły",
+    done:           "wykonaj",
+    enable:         "włącz",
+    export:         "eksport",
+    files:          "pliki",
+    help:           "pomoc",
+    ghost:          "druciak",        // left render pop menu (wireframe)
+    hide:           "ukryj",         // left render pop menu (invisible)
+    home:           "początek",
     import:         "import",
-    language:       "language",
-    machine:        "machine",      // device or machine
-    metric:         "metric",
-    name:           "name",
-    prefs:          "prefs",        // left menu "preferences"
-    preview:        "preview",
+    language:       "język",
+    machine:        "maszyna",      // device or machine
+    metric:         "metryka",
+    name:           "nazwa",
+    prefs:          "ustawienia",        // left menu "preferences"
+    preview:        "podgląd",
     recent:         "recent",
     render:         "render",       // left render pop menu
     reset:          "reset",
-    rotate:         "rotate",       // left rotate pop menu
-    save:           "save",
-    scale:          "scale",        // left object scale pop menu
-    setup:          "setup",
-    settings:       "settings",
-    size:           "size",
-    slice:          "slice",
-    solid:          "solid",        // view type pop menu
+    rotate:         "obróć",       // left rotate pop menu
+    save:           "zapisz",
+    scale:          "skala",        // left object scale pop menu
+    setup:          "ustaw",
+    settings:       "ustawienia",
+    size:           "wielkość",
+    slice:          "plaserki",
+    solid:          "wypełniony",        // view type pop menu
     start:          "start",
-    tool:           "tool",
-    tools:          "tools",        // CAM tool menu button
-    top:            "top",
-    type:           "type",         // CAM tool type
-    version:        "version",
-    view:           "view",         // left view pop menu
-    wire:           "wire",         // left render pop menu
+    tool:           "narzędzie",
+    tools:          "narzędzia",        // CAM tool menu button
+    top:            "góra",
+    type:           "typ",         // CAM tool type
+    version:        "wersja",
+    view:           "widok",         // left view pop menu
+    wire:           "druciak",         // left render pop menu "wire"
 
-    acct_xpo:       ["make a backup of your device","and device profiles with the","option to include workspace","objects and positions"],
+    acct_xpo:       ["zrób backup swojego urządzenia","i profil urządzenia z","opcja by zapisać przestrzeń roboczą","obiekty i pozycje"],
 
     // RIGHT-CLICK CONTEXT MENU
-    rc_clws:        "clear workspace",
-    rc_xpws:        "export workspace",
-    rc_lafl:        "lay flat",
-    rc_mirr:        "mirror",
-    rc_dupl:        "duplicate",
-    rc_xstl:        "export as STL",
+    rc_clws:        "wyczyść przestrzeń roboczą",
+    rc_xpws:        "wyeksportuj przestrzeń roboczą",
+    rc_lafl:        "ułóż płasko",
+    rc_mirr:        "odbicie", // lustro
+    rc_dupl:        "skopiuj",
+    rc_xstl:        "zapisz w formacie STL",
 
     // DEVICE MENU and related dialogs
     dm_sldt:        "select a device type",

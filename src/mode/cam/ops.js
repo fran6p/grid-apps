@@ -223,7 +223,7 @@
             });
             shadow = POLY.nest(shadow);
 
-            // expand shadow by half tool diameter + stock to leave
+            // shell = shadow expanded by half tool diameter + leave stock
             const sadd = roughIn ? toolDiam / 2 : toolDiam / 2;
             const shell = POLY.offset(shadow, sadd + roughLeave);
 
@@ -274,10 +274,12 @@
                 // elimate double inset on inners
                 offset.forEach(op => {
                     if (op.inner) {
-                        let operim = op.perimeter();
+                        let pv1 = op.perimeter();
                         let newinner = [];
                         op.inner.forEach(oi => {
-                            if (Math.abs(oi.perimeter() - operim) > 0.01) {
+                            let pv2 = oi.perimeter();
+                            let pct = pv1 > pv2 ? pv2/pv1 : pv1/pv2;
+                            if (pct < 0.98) {
                                 newinner.push(oi);
                             }
                         });
@@ -645,7 +647,8 @@
             let { settings, widget } = state;
             let { process } = settings;
 
-            let toolDiam = this.toolDiam;
+            let toolDiam = this.toolDiam = new CAM.Tool(settings, op.tool).fluteDiameter();
+            let stepover = toolDiam * op.step * 2;
             let cutdir = process.camConventional;
             let depthFirst = process.camDepthFirst;
             let depthData = [];
@@ -672,7 +675,7 @@
                             poly.reverse();
                         }
                         poly.forEachPoint(function(point, pidx) {
-                            camOut(point.clone(), pidx > 0);
+                            camOut(point.clone(), pidx > 0, stepover);
                         }, false);
                     });
                     newLayer();
@@ -686,7 +689,7 @@
                         poly.reverse();
                     }
                     poly.forEachPoint(function(point, pidx) {
-                        camOut(point.clone(), pidx > 0);
+                        camOut(point.clone(), pidx > 0, stepover);
                     }, false);
                     newLayer();
                     return lastPoint();
