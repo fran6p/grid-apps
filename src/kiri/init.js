@@ -198,7 +198,7 @@
         // }
         API.conf.update();
         DOC.activeElement.blur();
-        // API.event.emit("boolean.click");
+        API.event.emit("boolean.click");
     }
 
     function onButtonClick(ev) {
@@ -248,7 +248,6 @@
                 API.dialog.hide();
                 // cancel slicing
                 API.function.cancel();
-                // if (KIRI.work.isSlicing()) KIRI.work.restart();
                 // kill any poppers in compact mode
                 UC.hidePoppers();
                 // and send an event (used by FDM client)
@@ -1667,13 +1666,13 @@
 
             fdmInfill:           UC.newGroup(LANG.fi_menu, $('settings'), {modes:FDM}),
             sliceFillType:       UC.newSelect(LANG.fi_type, {modes:FDM}, "infill"),
-            fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceFillSparse:     UC.newInput(LANG.fi_pcnt_s, {title:LANG.fi_pcnt_l, convert:UC.toFloat, bound:UC.bound(0.0,1.0), modes:FDM}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceFillOverlap:    UC.newInput(LANG.fi_over_s, {title:LANG.fi_over_l, convert:UC.toFloat, bound:UC.bound(0.0,2.0), modes:FDM}),
-            sliceFillAngle:      UC.newInput(LANG.fi_angl_s, {title:LANG.fi_angl_l, convert:UC.toFloat, modes:FDM}),
-            // fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceFillRate:       UC.newInput(LANG.ou_feed_s, {title:LANG.fi_rate_l, convert:UC.toInt, bound:UC.bound(0,300), modes:FDM}),
+            fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
+            sliceFillAngle:      UC.newInput(LANG.fi_angl_s, {title:LANG.fi_angl_l, convert:UC.toFloat, modes:FDM}),
+            // sliceFillWidth:      UC.newInput(LANG.fi_wdth_s, {title:LANG.fi_wdth_l, convert:UC.toFloat, modes:FDM}),
 
             fdmSupport:          UC.newGroup(LANG.sp_menu, null, {modes:FDM, marker:false}),
             sliceSupportNozzle:  UC.newSelect(LANG.sp_nozl_s, {title:LANG.sp_nozl_l, modes:FDM}, "extruders"),
@@ -1691,7 +1690,7 @@
 
             sliceSupportGen:     UC.newRow([
                 UI.ssaGen = UC.newButton(LANG.sp_detect, onButtonClick, {class: "f-col grow a-center"})
-            ], { modes: FDM, class: "ext-buttons f-row grow", xshow:isNotBelt }),
+            ], { modes: FDM, class: "ext-buttons f-row grow" }),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM, show:isNotBelt}),
             sliceSupportManual: UC.newRow([
                 (UI.ssmAdd = UC.newButton(undefined, onButtonClick, {icon:'<i class="fas fa-plus"></i>'})),
@@ -1788,7 +1787,8 @@
             arcTolerance:        UC.newInput(LANG.ad_arct_s, {title:LANG.ad_arct_l, bound:UC.bound(0,1.0), convert:UC.toFloat, modes:FDM, show:() => { return isDanger() && isNotBelt() }}),
             antiBacklash:        UC.newInput(LANG.ad_abkl_s, {title:LANG.ad_abkl_l, bound:UC.bound(0,3), convert:UC.toInt, modes:FDM}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
-            gcodePauseLayers:    UC.newInput(LANG.ag_paws_s, {title:LANG.ag_paws_l, modes:FDM, comma:true}),
+            outputPeelGuard:     UC.newInput(LANG.ag_peel_s, {title:LANG.ag_peel_l, convert:UC.toInt, modes:FDM, comma:true, show:isBelt}),
+            gcodePauseLayers:    UC.newInput(LANG.ag_paws_s, {title:LANG.ag_paws_l, modes:FDM, comma:true, show:isNotBelt}),
             outputLoopLayers:    UC.newInput(LANG.ag_loop_s, {title:LANG.ag_loop_l, modes:FDM, comma:true, show:isBelt}),
             outputLayerRetract:  UC.newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l, modes:FDM}),
 

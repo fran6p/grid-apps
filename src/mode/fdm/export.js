@@ -47,6 +47,9 @@
             lout = null,
             last = null,
             zpos = 0,
+            bmax = 0,
+            blast = 0,
+            blastz = 0,
             process = settings.process,
             loops = process.outputLoopLayers,
             zhop = process.zHopDistance || 0, // range
@@ -55,6 +58,7 @@
             retSpeed = process.outputRetractSpeed * 60, // range
             retDwell = process.outputRetractDwell || 0, // range
             timeDwell = retDwell / 1000,
+            peelGuard = process.outputPeelGuard || 0,
             arcDist = isBelt || !isDanger ? 0 : (process.arcTolerance || 0),
             originCenter = process.outputOriginCenter,
             offset = originCenter ? null : {
@@ -63,7 +67,7 @@
             },
             nozzleTemp = process.firstLayerNozzleTemp || process.outputTemp,
             bedTemp = process.firstLayerBedTemp || process.outputBedTemp,
-            fanSpeed = process.firstLayerFanSpeed,
+            fanSpeed = undefined,
             lastNozzleTemp = nozzleTemp,
             lastBedTemp = bedTemp,
             lastFanSpeed = fanSpeed,
@@ -102,9 +106,15 @@
             retSpeed = process.outputRetractSpeed * 60; // range
             retDwell = process.outputRetractDwell || 0; // range
             timeDwell = retDwell / 1000;
-            nozzleTemp = process.outputTemp || process.firstLayerNozzleTemp;
-            bedTemp = process.outputBedTemp || process.firstLayerBedTemp;
-            fanSpeed = process.outputFanSpeed;
+            nozzleTemp = layer === 0 ?
+                process.firstLayerNozzleTemp || process.outputTemp :
+                process.outputTemp || process.firstLayerNozzleTemp;
+            bedTemp = layer === 0 ?
+                process.firstLayerBedTemp || process.outputBedTemp :
+                process.outputBedTemp || process.firstLayerBedTemp;
+            fanSpeed = layer === 0 ?
+                process.firstLayerFanSpeed || 0 :
+                process.outputFanSpeed || 0;
             Object.assign(subst, {
                 temp_bed: bedTemp,
                 bed_temp: bedTemp,
@@ -186,18 +196,18 @@
         let t1 = false;
         for (let i=0; i<device.gcodePre.length; i++) {
             let line = device.gcodePre[i];
-            if (line.indexOf('T0') >= 0) t0 = true; else
-            if (line.indexOf('T1') >= 0) t1 = true; else
-            if (line.indexOf('M82') >= 0) {
+            if (line.indexOf('T0') === 0) t0 = true; else
+            if (line.indexOf('T1') === 0) t1 = true; else
+            if (line.indexOf('M82') === 0) {
                 extrudeAbs = true;
                 extrudeSet = true;
             } else
-            if (line.indexOf('M83') >= 0) {
+            if (line.indexOf('M83') === 0) {
                 extrudeAbs = false;
                 extrudeSet = true;
             } else
-            if (line.indexOf('G90') >= 0 && !extrudeSet) extrudeAbs = true; else
-            if (line.indexOf('G91') >= 0 && !extrudeSet) extrudeAbs = false; else
+            if (line.indexOf('G90') === 0 && !extrudeSet) extrudeAbs = true; else
+            if (line.indexOf('G91') === 0 && !extrudeSet) extrudeAbs = false; else
             if (line.indexOf('G92') === 0) {
                 line.split(";")[0].split(' ').forEach(function (tok) {
                     let val = parseFloat(tok.substring(1) || 0) || 0;
@@ -272,7 +282,7 @@
             let epos = isBelt ? { x: pos.x, y: pos.y, z: pos.z } : pos;
             if (isBelt) {
                 epos.x = originCenter ? -pos.x : device.bedWidth - pos.x;
-                epos.z = pos.z * icos;
+                epos.z = blastz = pos.z * icos;
                 epos.y = -pos.y + epos.z * bcos;
                 lout = epos;
             }
@@ -323,8 +333,8 @@
         while (layer < layers.length) {
             path = layers[layer];
 
-            // allow range overrides past base
-            if (path.layer > 0) {
+            // range overrides
+            if (path.layer >= 0) {
                 updateParams(path.layer);
             }
 
@@ -335,6 +345,7 @@
                     (process.firstSliceHeight || process.sliceHeight) : path.height);
 
             zpos = path.z || zpos;
+            bmax = Math.max(bmax, pos.z * icos);
             subst.z = subst.Z = zpos.round(3);
             subst.e = subst.E = outputLength;
             subst.layer = layer;
@@ -342,6 +353,12 @@
 
             if (isBelt) {
                 pos.z = zpos;
+                if (peelGuard && bmax > peelGuard && blast < peelGuard) {
+                    peelGuard += 50;
+                    append(`G0 Z${(blast + 55).round(decimals)} F200 ; peel guard`);
+                    append(`G0 Z${blastz.round(decimals)} F200 ; unpeel`);
+                }
+                blast = bmax;
             }
 
             if (pauseCmd && pause.indexOf(layer) >= 0) {

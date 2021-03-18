@@ -20,15 +20,20 @@
      * @returns {Object[]} returns array of render objects
      */
     FDM.prepare = function(widgets, settings, update) {
+        // filter ignored widgets
+        widgets = widgets.filter(w => !w.track.ignore);
+
         settings = FDM.fixExtruders(settings);
         let render = settings.render !== false,
             { device, process, controller, bounds, mode } = settings,
+            { bedWidth, bedDepth } = device,
             output = [],
             printPoint = newPoint(0,0,0),
             nozzle = device.extruders[0].extNozzle,
             isBelt = device.bedBelt,
             isThin = controller.lineType === "line",
             isFlat = controller.lineType === "flat",
+            isDanger = controller.danger || false,
             firstLayerHeight = isBelt ? process.sliceHeight : process.firstSliceHeight || process.sliceHeight,
             firstLayerSeek = process.outputSeekrate,
             firstLayerRate = process.firstLayerRate,
@@ -81,7 +86,8 @@
                 });
                 // nest and offset tops
                 POLY.nest(tops).forEach(function(poly) {
-                    poly.offset(-offset + nozzle / 2).forEach(function(brim) {
+                    let off = poly.offset(-offset + nozzle / 2);
+                    if (off) off.forEach(function(brim) {
                         brim.move(widget.track.pos);
                         brims.push(brim);
                     });
@@ -89,7 +95,7 @@
             });
 
             // merge brims
-            brims = POLY.union(brims);
+            brims = POLY.union(brims, undefined, true);
 
             // if brim is offset, over-expand then shrink to induce brims to merge
             if (offset && brims.length) {
@@ -125,6 +131,7 @@
                         speed: speed,
                         mult: extrude,
                     });
+                    layerout.z = zoff + height;
                     layerout.height = height;
                     output.append(layerout);
 
@@ -132,14 +139,15 @@
                     zoff += height;
                 };
 
-                raft(nozzle/1, process.sliceFillAngle + 0 , nozzle * 6.0, firstLayerRate / 3, 4);
-                raft(nozzle/1, process.sliceFillAngle + 0 , nozzle * 6.0, firstLayerRate / 2, 4);
+                raft(nozzle/1, process.sliceFillAngle + 0 , nozzle * 5.0, firstLayerRate / 3, 4);
+                raft(nozzle/1, process.sliceFillAngle + 0 , nozzle * 5.0, firstLayerRate / 2, 4);
                 raft(nozzle/2, process.sliceFillAngle + 90, nozzle * 3.0, process.outputFeedrate, 2.5);
                 raft(nozzle/2, process.sliceFillAngle + 0 , nozzle * 1.0, process.outputFeedrate, 1.5);
-                raft(nozzle/2, process.sliceFillAngle + 0 , nozzle * 1.0, process.outputFeedrate, 1.0);
+                raft(nozzle/2, process.sliceFillAngle + 90 , nozzle * 0.7, process.outputFeedrate, 0.75);
 
                 // raise first layer off raft slightly to lessen adhesion
                 firstLayerHeight += process.outputRaftSpacing || 0;
+                zoff += process.outputRaftSpacing || 0;
 
                 // retract after last raft layer
                 output.last().last().retract = true;
@@ -162,7 +170,8 @@
                 });
 
                 // output brim points
-                printPoint = print.poly2polyEmit(polys, printPoint, function(poly, index, count, startPoint) {
+                let brimStart = offset < nozzle * 2 ? newPoint(-bedWidth, -bedDepth, 0) : printPoint;
+                printPoint = print.poly2polyEmit(polys, brimStart, (poly, index, count, startPoint) => {
                     return print.polyPrintPath(poly, startPoint, preout, {
                         rate: firstLayerRate,
                         onfirst: function(point) {
@@ -394,6 +403,7 @@
                 lastWidget = slice.widget;
                 layerout.z = z + slice.height / 2;
                 layerout.height = layerout.height || slice.height;
+                layerout.slice = slice;
                 // mark layer as anchor if slice is belt and flag set
                 layerout.anchor = slice.belt && slice.belt.anchor;
                 // detect extruder change and print purge block
@@ -404,10 +414,12 @@
                 // output seek to start point between mesh slices if previous data
                 printPoint = print.slicePrintPath(
                     slice,
-                    isBelt ? newPoint(-wtb.w, wtb.d * 2, 0) : printPoint.sub(offset),
+                    slice.belt && slice.belt.touch ? newPoint(-wtb.w, wtb.d * 2, 0) : printPoint.sub(offset),
                     offset,
                     layerout,
                     {
+                        seedPoint: printPoint.sub(offset),
+                        danger: isDanger,
                         params, // range parameters
                         first: slice.index === 0,
                         support: slice.widget.support,
@@ -583,6 +595,8 @@
         const headColor = 0x888888;
         const moveColor = opts.move >= 0 ? opts.move : 0xaaaaaa;
         const printColor = opts.print >= 0 ? opts.print : 0x777700;
+        const arrowAll = false;
+        const arrowSize = arrowAll ? 0.2 : 0.4;
         const layers = [];
 
         const moveOpt = {
@@ -609,6 +623,7 @@
         let lastOut = null;
         let current = null;
         let retracted = false;
+        let retractz = 0;
 
         function color(point) {
             return FDM.rateToColor(point.speed, maxspd);
@@ -644,6 +659,7 @@
                 if (out.retract) {
                     retracts.push(out.point);
                     retracted = true;
+                    retractz++;
                 }
                 if (!out.point) {
                     // in cam mode, these are drilling or dwell ops
@@ -651,7 +667,7 @@
                 }
 
                 if (lastOut) {
-                    if (lastOut.emit !== out.emit) {
+                    if (arrowAll || lastOut.emit !== out.emit) {
                         heads.push({p1: lastOut.point, p2: out.point});
                     }
                     const op = out.point, lp = lastOut.point;
@@ -716,8 +732,8 @@
                         const slope = p2.slopeTo(p1);
                         const s1 = BASE.newSlopeFromAngle(slope.angle + 20);
                         const s2 = BASE.newSlopeFromAngle(slope.angle - 20);
-                        const p3 = points.p2.projectOnSlope(s1, 0.8);
-                        const p4 = points.p2.projectOnSlope(s2, 0.8);
+                        const p3 = points.p2.projectOnSlope(s1, arrowSize);
+                        const p4 = points.p2.projectOnSlope(s2, arrowSize);
                         return newPolygon().addPoints([p2,p3,p4]).setZ(p2.z + 0.01);
                     }), { thin: true, outline: true });
             }
@@ -749,7 +765,7 @@
 
             update(index / levels.length, output);
         });
-
+        // console.log({retractz});
         return layers;
     }
 

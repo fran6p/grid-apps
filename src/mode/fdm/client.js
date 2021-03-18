@@ -33,10 +33,12 @@
             // slice
             "sliceShells": LANG.sl_shel_s,
             "sliceFillType": LANG.fi_type,
+            "sliceFillWidth": LANG.fi_wdth_s,
             "sliceFillSparse": LANG.fi_pcnt_s,
             "sliceSolidMinArea": LANG.ad_msol_s,
             // prepare
             "sliceShellOrder": LANG.sl_ordr_s,
+            "sliceFillOverlap": LANG.fi_over_s,
             "outputFeedrate": LANG.ou_feed_s,
             "outputFinishrate": LANG.ou_fini_s,
             "outputShellMult": LANG.ou_shml_s,
@@ -51,6 +53,8 @@
             "sliceLayerStart": LANG.sl_strt_s,
             // export
             "zHopDistance": LANG.ad_zhop_s,
+            "arcTolerance": LANG.ad_zhop_s,
+            "antiBacklash": LANG.ad_abkl_s,
             "outputTemp": LANG.ou_nozl_s,
             "outputBedTemp": LANG.ou_bedd_s,
             "outputFanSpeed": LANG.ou_fans_s,
@@ -60,7 +64,9 @@
         };
 
         for (let key of Object.keys(rangeVars)) {
-            UI[key].range = true;
+            if (UI[key]) {
+                UI[key].range = true;
+            }
         }
 
         function filterSynth() {
@@ -102,6 +108,23 @@
               }
         }
 
+        api.event.on("boolean.click", func.updateSupportButtons = () => {
+            if (!isFdmMode) {
+                return;
+            }
+            for (let btn of [
+                UI.ssaGen,
+                UI.ssmAdd,
+                UI.ssmDun,
+                UI.ssmClr
+            ]) {
+                btn.disabled = UI.sliceSupportEnable.checked;
+            }
+            if (UI.sliceSupportEnable.checked) {
+                func.sclear();
+            }
+        });
+
         api.event.on("function.animate", (mode) => {
             if (!isFdmMode) {
                 return;
@@ -119,6 +142,11 @@
                     clearTimeout(int);
                 }
             }, 50);
+            // let slider = $('top-slider');
+            // slider.style.display = 'flex';
+            // slider.oninput = slider.onchange = (ev) => {
+            //     api.const.STACKS.setFraction(parseInt(ev.target.value)/100);
+            // };
         });
         api.event.on("mode.set", mode => {
             isFdmMode = mode === 'FDM';
@@ -155,6 +183,7 @@
         });
         api.event.on("settings.saved", (settings) => {
             updateRanges(settings.process.ranges);
+            func.updateSupportButtons();
             // let ranges = settings.process.ranges;
             // UI.rangeGroup.style.display = isFdmMode && ranges && ranges.length ? 'flex' : 'none';
         });
@@ -212,8 +241,9 @@
         });
         api.event.on("fdm.supports.clear", func.sclear = () => {
             func.sdone();
-            clearAllWidgetSupports();
-            API.conf.save();
+            if (clearAllWidgetSupports()) {
+                API.conf.save();
+            }
         });
         api.event.on("slice.begin", () => {
             if (!isFdmMode) {
@@ -229,7 +259,15 @@
                 if (!merge.length) {
                     continue;
                 }
-                let boxen = merge.map(m => m.box.geometry.clone().translate(m.x, m.y, m.z));
+                let boxen = merge.map(m => {
+                    let geo = m.box.geometry.clone();
+                    if (geo.index) geo = geo.toNonIndexed();
+                    return geo.translate(m.x, m.y, m.z);
+                });
+                for (let box of boxen) {
+                    // eliminate / normalize uv to allow other widget merge
+                    box.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(0), 3));
+                }
                 let bbg = THREE.BufferGeometryUtils.mergeBufferGeometries(boxen);
                 let sw = kiri.newWidget(null, group);
                 let fwp = group[0].track.pos;
@@ -482,18 +520,23 @@
     }
 
     function clearAllWidgetSupports() {
+        let cleared = 0;
         API.widgets.all().forEach(widget => {
-            clearWidgetSupports(widget);
+            cleared += clearWidgetSupports(widget);
         });
+        return cleared;
     }
 
     function clearWidgetSupports(widget) {
+        let cleared = 0;
         Object.values(widget.sups || {}).forEach(support => {
             widget.adds.remove(support.box);
             widget.mesh.remove(support.box);
+            cleared++;
         });
         widget.sups = {};
         delete API.widgets.annotate(widget.id).support;
+        return cleared;
     }
 
     function delbox(name) {

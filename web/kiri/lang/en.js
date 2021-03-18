@@ -270,13 +270,15 @@ kiri.lang['en-us'] = {
 
     // FDM FILL
     fi_menu:        "infill",
-    fi_type:        "type",
+    fi_type:        "fill type",
     fi_pcnt_s:      "fill fraction",
     fi_pcnt_l:      ["fill density values","0.0 - 1.0"],
     fi_angl_s:      "solid start",
     fi_angl_l:      ["starting angle in degrees","90 degrees added to ","each following layer","applies only to solid layers"],
-    fi_over_s:      "overlap",
-    fi_over_l:      ["overlap with shell and other fill","as fraction of nozzle diameter","0.0 - 1.0"],
+    fi_wdth_s:      "solid width",
+    fi_wdth_l:      ["line width for solid fill","as a fraction of nozzle width","values < 1 are more dense","good for surface finishes","0.0 - 1.0"],
+    fi_over_s:      "shell overlap",
+    fi_over_l:      ["overlap with shell and other fill","as fraction of nozzle diameter","0.0 - 2.0"],
     // fi_rate_s:      "print speed",
     fi_rate_l:      ["extrusion speed for infill","set to 0 to use default","output print speeds"],
 
@@ -585,6 +587,8 @@ kiri.lang['en-us'] = {
     ag_menu:        "gcode",
     ag_nozl_s:      "nozzle",
     ag_nozl_l:      "select output nozzle or head",
+    ag_peel_s:      "peel guard",
+    ag_peel_l:      ["starting at this belt z positoin","periodically roll the print off and","back on to the belt to unstick it","and prevent rolling deflection"],
     ag_paws_s:      "pause layers",
     ag_paws_l:      ["comma-separated list of layers","to inject pause commands before"],
     ag_loop_s:      "loop layers",

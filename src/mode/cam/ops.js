@@ -253,6 +253,7 @@
                 if (!roughIn) {
                     const outside = POLY.offset(shadow.clone(), toolDiam / 2, {z: slice.z});
                     if (outside) {
+                        outside.forEach(p => p.depth = -p.depth);
                         offset.appendAll(outside);
                     }
                 }
@@ -266,7 +267,7 @@
 
                 if (!offset) return;
 
-                if (process.camStockClipTo) {
+                if (process.camStockClipTo && stock.x && stock.y && stock.center) {
                     let rect = newPolygon().centerRectangle(stock.center, stock.x, stock.y);
                     offset = cutPolys([rect], offset, slice.z, true);
                 }
@@ -371,18 +372,22 @@
                 }
             }
 
+            function isNeg(v) {
+                return v < 0 || (v === 0 && 1/v === -Infinity);
+            }
+
             if (depthFirst) {
-                let tops = depthData.map(level => {
-                    // return POLY.nest(level.filter(poly => poly.depth === 0));
+                let ease = danger && op.down && easeDown ? op.down : 0;
+                let ins = depthData.map(a => a.filter(p => !isNeg(p.depth)));
+                let itops = ins.map(level => {
                     return POLY.nest(level.filter(poly => poly.depth === 0).clone());
                 });
-                // experimental start of ease down
-                let ease = danger && op.down && easeDown ? op.down : 0;
-                printPoint = depthRoughPath(printPoint, 0, depthData, tops, polyEmit, false, ease);
-                // printPoint = depthRoughPath(printPoint, 0, depthData, tops, (poly, index, count, start) => {
-                //     console.log({z: poly.getZ(), i: poly.id, index, poly});
-                //     return polyEmit(poly, index, count, start);
-                // });
+                let outs = depthData.map(a => a.filter(p => isNeg(p.depth)));
+                let otops = outs.map(level => {
+                    return POLY.nest(level.filter(poly => poly.depth === 0).clone());
+                });
+                printPoint = depthRoughPath(printPoint, 0, ins, itops, polyEmit, false, ease);
+                printPoint = depthRoughPath(printPoint, 0, outs, otops, polyEmit, false, ease);
             }
 
             setPrintPoint(printPoint);
@@ -467,7 +472,7 @@
                     tops = tshadow;
                 }
 
-                if (op.outside && op.omitthru) {
+                if (op.omitthru) {
                     // eliminate thru holes from shadow
                     for (let hole of thruHoles) {
                         for (let top of tops) {
@@ -523,7 +528,7 @@
                     CAM.addDogbones(offset, toolDiam / 5);
                 }
 
-                if (process.camStockClipTo) {
+                if (process.camStockClipTo && stock.x && stock.y && stock.center) {
                     let rect = newPolygon().centerRectangle(stock.center, stock.x, stock.y);
                     offset = cutPolys([rect], offset, slice.z, true);
                 }
@@ -719,7 +724,8 @@
             let toolOver = toolDiam * op.step;
             let cutdir = process.camConventional;
             let polys = [];
-            let stockRect = newPolygon().centerRectangle(stock.center, stock.x, stock.y);
+            let stockRect = stock.center && stock.x && stock.y ?
+                newPolygon().centerRectangle(stock.center, stock.x, stock.y) : undefined;
             updateToolDiams(toolDiam);
             if (tabs) {
                 tabs.forEach(tab => {
@@ -746,7 +752,7 @@
                 } else {
                     slice.camLines = [ poly ];
                 }
-                if (process.camStockClipTo) {
+                if (process.camStockClipTo && stockRect) {
                     slice.camLines = cutPolys([stockRect], slice.camLines, z, true);
                 }
                 slice.output()
