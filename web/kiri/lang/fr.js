@@ -585,10 +585,12 @@ kiri.lang['fr-fr'] = {
     ag_menu:        "gcode",
     ag_nozl_s:      "buse",
     ag_nozl_l:      "sélectionner la buse ou la tête d'impression",
+    ag_peel_s:      "peel guard",
+    ag_peel_l:      ["à partir de cette position Z de la bande","effectue périodiquement un va-et-vient de","celle-ci afin de décoller la pièce et","prévenir une déviation du roulement"],
     ag_paws_s:      "couches de pause",
     ag_paws_l:      ["liste de couches séparées par des virgules", "où insérer des commandes de pause"],
     ag_loop_s:      "couches de répétitions",
-    ag_loop_l:      ["intervalles de couches à répéter dans le format ", "premier dernier,premier dernier,...", "compte omis = 1"],
+    ag_loop_l:      ["intervalles de couches à répéter dans le format ", "premier-dernier-nombre,premier-dernier-nombre,...", "nombre omis = 1"],
 
     // SLA MENU
     sa_menu:        "tranchage",

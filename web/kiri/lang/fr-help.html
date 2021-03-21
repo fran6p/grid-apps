@@ -20,18 +20,18 @@
             <div class="content">
                 <p>
                     <b>Kiri:Moto</b> est un logiciel de découpe unique, fonctionnant dans un navigateur, entièrement open source, qui
-                    transforme les modèles 3d en instructions de machine pour <u>des imprimantes 3D</u>, <u>des CNC</u>,
+                    transforme les modèles 3d en instructions machine pour <u>des imprimantes 3D</u>, <u>des CNC</u>,
                     et <u>des graveurs laser</u>.
                 </p><br><p>
                     Le fait d'être basé sur un navigateur signifie que <i>tout</i> le processus de découpe a lieu dans le navigateur local,
-                    et non dans le nuage. Vos données et modèles restent <i>totalement privés</i>.
+                    et non dans un nuage. Vos données et modèles restent <i>totalement privés</i>.
                 </p><br><p>
                     Cela signifie que Kiri se comporte comme une application native de votre ordinateur avec en plus
-                    la sécurité de l'exécution dans le bac à sable de sécurité du navigateur.
+                    la sécurité de l'exécution dans le bac à sable du navigateur.
                 </p><br><p>
-                    L'autre avantage de fonctionner à partir du web est que Kiri est toujours à jour. Les nouvelles
-                    fonctionnalités, les corrections de bogues et les mises à jour sont fréquemment mises en place. Si vous souhaitez exécuter une ancienne
-                    ou une version de développement de Kiri, sélectionnez cette version dans le menu utilisateur en haut à droite.
+                    L'autre avantage de fonctionner à partir du web est que Kiri est toujours à jour. Les nouvelles fonctionnalités,
+                    corrections de bogues et mises à jour sont fréquemment mises en place. Si vous souhaitez exécuter une version
+                    ancienne ou une de développement de Kiri, sélectionnez cette version dans le menu utilisateur en haut à droite.
                 </p>
             </div>
             <div class="grow"></div>
@@ -44,14 +44,14 @@
             <div class="content">
                 <p>
                     <li id="help-start">visionner <a href="https://youtu.be/08795Sj22QE" target="youtube">The Definitive Video Guide to Kiri:Moto 2.5</a></li>
-                    <li><button><i class="fas fa-cogs"></i></button> le menu setup sélectionne le <button><i class="fas fa-cube"></i></button> type de matériel et un appareil</li>
-                    <li><button><i class="fas fa-sliders-h"></i></button> les préférences permettent de régler l'interface et les caractéristiques de l'appareil</li>
-                    <li><button><i class="fas fa-plus"></i></button> personnaliser un appareil si vous souhaitez modifier les paramètres par défaut</li>
+                    <li><button><i class="fas fa-cogs"></i></button> le menu setup sélectionne le <button><i class="fas fa-cube"></i></button> type de matériel et un modèlè</li>
+                    <li><button><i class="fas fa-sliders-h"></i></button> les préférences permettent de régler l'interface et les caractéristiques du modèle</li>
+                    <li><button><i class="fas fa-plus"></i></button> personnaliser un modèlè si vous souhaitez modifier les paramètres par défaut</li>
                     <li><button><i class="fas fa-folder"></i></button> ouvre un fichier ou <button><i class="fas fa-file-upload"></i></button> importe des pièces dans l'espace de travail</li>
-                    <li>utiliser les menus de droite pour personnaliser les paramètres de découpage</li>
-                    <li><button><i class="fas fa-bars"></i></button> découper les objets pour voir l'effet des paramètres</li>
-                    <li><button><i class="fas fa-cubes"></i></button> la prévisualisation calcule les données de cheminement des objets tranchés</li>
-                    <li><button><i class="fas fa-file-download"></i></button> l'exportation convertit les chemins d'accès aux fichiers GCode et SVG</li>
+                    <li>utiliser les menus de droite pour personnaliser les paramètres de découpe</li>
+                    <li><button><i class="fas fa-bars"></i></button> trancher les objets pour voir l'effet des paramètres</li>
+                    <li><button><i class="fas fa-cubes"></i></button> la prévisualisation calcule les données de déplacements des objets tranchés</li>
+                    <li><button><i class="fas fa-file-download"></i></button> l'exportation convertit les déplacements en fichiers GCode et SVG</li>
                 </p>
             </div>
             <div class="content">
@@ -89,9 +89,9 @@
                     <tr><td><label>i</label></td><td>Importer</td></tr>
                     <tr><td><label>r</label></td><td>Récent</td></tr>
                     <tr><td></td></tr>
-                    <tr><td colspan=2 class="header2">Voir</td></tr>
-                    <tr><td><label>h</label></td><td>Home</td></tr>
-                    <tr><td><label>t</label></td><td>Top</td></tr>
+                    <tr><td colspan=2 class="header2">Vue</td></tr>
+                    <tr><td><label>h</label></td><td>Origine</td></tr>
+                    <tr><td><label>t</label></td><td>Dessus</td></tr>
                     <tr><td><label>f</label></td><td>Avant</td></tr>
                     <tr><td><label>b</label></td><td>Arrière</td></tr>
                     <tr><td><label>z</label></td><td>Réinitialiser la vue</td></tr>
@@ -104,7 +104,7 @@
                     <tr><td><label>m</label></td><td>Miroir</td></tr>
                     <tr><td><label>o</label></td><td>Pivoter/tourner</td></tr>
                     <tr><td><label>delete</label></td><td>Supprimer</td></tr>
-                    <tr><td><label>arrow</label></td><td>Tounrer de 90&deg;</td></tr>
+                    <tr><td><label>arrow</label></td><td>Tourner de 90&deg;</td></tr>
                     <tr><td><label>shift-arrow</label></td><td>Tourner de 5&deg;</td></tr>
                     <tr><td><label>option-arrow</label></td><td>Déplacer de 5mm</td></tr>
                     <tr><td><label>ctrl-a</label></td><td>Tout sélectionner</td></tr>
@@ -115,14 +115,13 @@
                     <tr><td colspan="2" class="header">Contrôles via la souris</td><tr>
                     <tr><td></td></tr>
                     <tr><th>Combo</th><th>Action</th></tr>
-                    <tr><td colspan=2 class="header2">View</td></tr>
+                    <tr><td colspan=2 class="header2">Vue</td></tr>
                     <tr><td><label>shift</label> molette</td><td>Changer de couche</td></tr>
                     <tr><td><label>meta</label> déplacer</td><td>Pan</td></tr>
                     <tr><td><label>déplacer-droit</label></td><td>Pan</td></tr>
                     <tr><td><label>déplacer-gauche</label></td><td>Tourner</td></tr>
                     <tr><td><label>molette-souris</label></td><td>Zoom</td></tr>
                     <tr><td><label>déplacer-milieu</label></td><td>Zoom</td></tr>
-                    <tr><td><label>meta</label> déplacer</td><td>Pan</td></tr>
                     <tr><td></td></tr>
                     <tr><td colspan=2 class="header2">Objets</td></tr>
                     <tr><td><label>ctrl-clic</label></td><td>Aligner la face sur le plateau</td></tr>
@@ -135,18 +134,18 @@
         <div id="help-tab-support" class="help-tab f-col"><div class="content">
             <b class="header">Ressources</b>
             <div class="content nounderline">
-                <a target="_rsc" href="https://docs.grid.space/projects/kiri-moto"><i class="fas fa-question-circle"></i> Documentation étendue</a>
-                <a target="_rsc" href="https://forum.grid.space"><i class="fab fa-discourse"></i> fora Grid.Space</a>
-                <a target="_rsc" href="https://discord.gg/suyCCgr"><i class="fab fa-discord"></i> Discord serveur de chat en direct</a>
-                <a target="_rsc" href="https://www.youtube.com/playlist?list=PLRoVgyRoWZpumQIKWm7oldx3bjDivqP24"><i class="fab fa-youtube"></i> Youtube vidéos et tutoriels</a>
+                <a target="_rsc" href="https://docs.grid.space/projects/kiri-moto"><i class="fas fa-question-circle"></i> Documentation complète</a>
+                <a target="_rsc" href="https://forum.grid.space"><i class="fab fa-discourse"></i> forum Grid.Space</a>
+                <a target="_rsc" href="https://discord.gg/suyCCgr"><i class="fab fa-discord"></i> Discord - serveur de chat en direct</a>
+                <a target="_rsc" href="https://www.youtube.com/playlist?list=PLRoVgyRoWZpumQIKWm7oldx3bjDivqP24"><i class="fab fa-youtube"></i> Youtube - vidéos et tutoriels</a>
                 <a target="_rsc" href="https://twitter.com/grid_space_3d"><i class="fab fa-twitter"></i> Suivre Grid.Space sur Twitter</a>
                 <a target="_rsc" href="https://facebook.com/groups/kirimoto"><i class="fab fa-facebook"></i> Kiri:Moto Groupe d'usagers sur Facebook</a>
             </div>
             <b class="header">Options complémentaires</b>
             <p>
                 Dans <button><i class="fas fa-user-cog"></i></button> le menu utilsateur en haut à droite,
-                utiliser l'option <span class="mono">export</span> pour créer unecopie téléchargeable des
-                profils du matériel et (optionellement) de l'espace de travail. Ce fichier pourra ensuite
+                utiliser l'option <span class="mono">export</span> pour créer une copie téléchargeable des
+                profils du matériel et (facultativement) de l'espace de travail. Ce fichier pourra ensuite
                 être utilisé pour contrôler et rétablir un instantané de votre installation à tout moment.
                 Il peut également être partagé afin que les développeurs et autres utilisateurs puissent
                 reproduire votre environnement pour aider au débogage.
@@ -166,7 +165,7 @@
                 <p>Kiri:Moto est également intégré dans plusieurs autres applications web</p>
                 <li><a target="app" href="https://appstore.onshape.com/apps/CAM/EAAEWYIOMQKBENEMYW2N7MF253CT4WYL6SUJGEY=/description"><b>Onshape</b></a> via son magasin d'Applications</li>
                 <li><a target="app" href="http://www.thingiverse.com/apps/kirimoto/"><b>Thingiverse</b></a> en tant que native Thing Apps</li>
-                <li><a target="app" href="https://simplyprint.io">SimplyPrint.io</a> as the primary slicer under the covers</li>
+                <li><a target="app" href="https://simplyprint.io">SimplyPrint.io</a> envisagé comme principal trancheur</li>
                 <li><a target="app" href="https://sienci.com/camlab-help/">CAMLab</a> est une branche d'une version antérieure de Kiri:Moto</li>
         </div></div>
 
