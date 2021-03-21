@@ -274,7 +274,10 @@ kiri.lang['fr-fr'] = {
     fi_pcnt_s:      "fraction de remplissage",
     fi_pcnt_l:      ["densité de remplissage","0.0 - 1.0"],
     fi_angl_s:      "départ solide",
-    fi_angl_l:      ["angle de départ en degrés", "90 degrés sont ajoutés à ", "chaque nouvelle couche", "ne s'applique qu'aux couches solides"],
+    fi_angl_l:      ["angle de départ en degrés", "90 degrés sont ajoutés à fi_wdth_s:      "solid width", fi_wdth_l:      ["line width for solid fill", "ne s'applique qu'aux couches solides"],
+    fi_wdth_s:      "largeur solide",
+    fi_wdth_l:      ["largeur de ligne du remplissage solide","en tant que fraction du diamètre de la buse","valeurs < 1 plus dense","idéal pour la finition des surfaces","0.0 - 1.0"],
+
     fi_over_s:      "chevauchement",
     fi_over_l:      ["chevauchement de l'enveloppe et du remplissage", "en tant que fraction du diamètre de la buse", "0,0 - 1,0"],
     // fi_rate_s:      "vitesse d'impression",
