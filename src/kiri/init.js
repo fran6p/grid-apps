@@ -490,10 +490,7 @@
     }
 
     function mirrorSelection() {
-        API.selection.for_widgets(function(widget) {
-            widget.mirror();
-        });
-        SPACE.update();
+        API.selection.mirror();
     }
 
     function keys(o) {
@@ -540,7 +537,7 @@
             y = y - current.device.bedDepth/2 + (bounds.max.y - bounds.min.y)/2
         }
 
-        moveSelection(x, y, z, true);
+        API.selection.move(x, y, z, true);
     }
 
     function deviceExport(exp, name) {
@@ -1951,13 +1948,13 @@
             } else {
                 style.display = 'flex';
                 UI.dev.filter.focus();
-                deviceFilter = UI.dev.filter.value;
+                deviceFilter = UI.dev.filter.value.toLowerCase();
                 updateDeviceList();
             }
         };
 
         UI.dev.filter.onkeyup = (ev) => {
-            deviceFilter = UI.dev.filter.value;
+            deviceFilter = UI.dev.filter.value.toLowerCase();
             updateDeviceList();
         };
 
@@ -2022,6 +2019,10 @@
         };
         $('lset-pl').onclick = function() {
             SDB.setItem('kiri-lang', 'pl-pl');
+            API.space.reload();
+        };
+        $('lset-es').onclick = function() {
+            SDB.setItem('kiri-lang', 'es-es');
             API.space.reload();
         };
 
