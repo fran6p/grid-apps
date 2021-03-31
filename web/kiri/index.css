@@ -396,6 +396,10 @@ th, tr, td, label {
     pointer-events: none;
 }
 
+#mod-print button, #catalogList button, #settingsList button {
+    text-transform: none !important;
+}
+
 #mid-lcol, #mid-rcol, #modal {
     pointer-events: visible;
     text-transform: capitalize;
@@ -768,8 +772,8 @@ th, tr, td, label {
     right: 5px;
 }
 #mod-setup {
-    height: 500px;
-    width: 700px;
+    height: 550px;
+    width: 725px;
     padding-bottom: 5px;
 }
 #mod-setup .header {
