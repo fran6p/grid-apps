@@ -1,5 +1,5 @@
-// english. other language maps will defer to english
-// map for any missing key/value pairs
+// English language map. Other localization maps will
+// defer to English map for any missing key/value pairs
 kiri.lang['en'] =
 kiri.lang['en-us'] = {
     // common keys and menus
@@ -578,6 +578,8 @@ kiri.lang['en-us'] = {
     ad_play_l:      ["polish up to specified","# of layers at a time"],
     ad_pspd_s:      "polish speed",
     ad_pspd_l:      ["polishing speed","in millimeters / minute"],
+    ad_purg_s:      "purge tower",
+    ad_purg_l:      ["enable purge tower","for multiple extruders"],
 
     // CAM EXPERT
     cx_fast_s:      "skip shadow",

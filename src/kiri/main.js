@@ -1233,6 +1233,7 @@
             });
             return;
         }
+        API.event.emit("function.export", {mode: settings.mode});
         complete.export = true;
         KIRI.export(...argsave);
     }
@@ -2728,6 +2729,7 @@
             if (sk == settings.process.processName) {
                 load.setAttribute('class', 'selected')
             }
+            UI.settingsName.value = settings.process.processName;
 
             del.setAttribute('del', sk);
             del.setAttribute('title', "remove '"+sk+"'");
@@ -2756,6 +2758,7 @@
     function showSettings() {
         updateSettingsList();
         showModal("saves");
+        UI.settingsName.focus();
     }
 
     function showHelp() {
