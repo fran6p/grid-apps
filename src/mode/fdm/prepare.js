@@ -413,7 +413,7 @@
                 // output seek to start point between mesh slices if previous data
                 printPoint = print.slicePrintPath(
                     slice,
-                    slice.belt && slice.belt.touch ? newPoint(-wtb.w, wtb.d * 2, 0) : printPoint.sub(offset),
+                    slice.belt && slice.belt.touch ? newPoint(-5000, 5000, 0) : printPoint.sub(offset),
                     offset,
                     layerout,
                     {
@@ -501,25 +501,27 @@
             // }
 
             let thresh = firstLayerHeight * 1.05;
+            let seqn = 0;
+
             // iterate over layers, find extrusion on belt and
             // apply corrections and add brim when specified
             for (let layer of output) {
                 let params = getRangeParameters(settings, layer.layer || 0);
                 let firstLayerBrim = params.firstLayerBrim;
                 let firstLayerBrimTrig = params.firstLayerBrimTrig;
-                if (!firstLayerBrim) {
-                    continue;
-                }
-
+                let firstLayerBrimComb = params.firstLayerBrimComb;
+                let firstLayerBrimGap = params.firstLayerBrimGap || 0;
                 let lastout, first = false;
                 let minz = Infinity, maxy = -Infinity, minx = Infinity, maxx = -Infinity;
                 let mins = Infinity;
                 let miny = Infinity;
+
                 for (let rec of layer) {
                     let point = rec.point;
                     let belty = rec.belty = -point.y + point.z * bfactor;
                     miny = Math.min(miny, belty);
                     if (rec.emit && belty <= thresh && lastout && Math.abs(lastout.belty - belty) < 0.005) {
+                        // apply base speed to segments touching belt
                         rec.speed = firstLayerRate;
                         rec.emit *= firstLayerMult;
                         minx = Math.min(minx, point.x, lastout.point.x);
@@ -532,28 +534,35 @@
                     }
                     lastout = rec;
                 }
-                // skip if brim trigger not met
-                if (firstLayerBrimTrig > 0 && mins > firstLayerBrimTrig) {
-                    continue;
-                }
                 // do not add brims to anchor layers
-                if (layer.anchor) {
+                if (!first || layer.anchor) {
+                    seqn = 0;
                     continue;
                 }
-                // add brim, if specified
-                if (first && firstLayerBrim) {
+                let tmpout = [];
+                let trigmet = firstLayerBrimTrig === 0 || (firstLayerBrimTrig && mins > firstLayerBrimTrig);
+                // add brim when all conditions met
+                if (firstLayerBrim && seqn <= firstLayerBrimComb && trigmet) {
                     let { emit, tool } = first;
                     let y = maxy;
                     let z = minz;
-                    let b = Math.max(firstLayerBrim, 1);
-                    let tmpout = [];
+                    let g = firstLayerBrimGap || 0;
+                    let b = Math.max(firstLayerBrim, 1) + g;
                     layer.last().retract = true;
                     print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    firstLayerSeek, tool);
-                    print.addOutput(tmpout, newPoint(maxx + 0, y, z), emit, firstLayerRate, tool).retract = true;
+                    print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool).retract = true;
                     print.addOutput(tmpout, newPoint(minx - b, y, z), 0,    firstLayerSeek, tool);
-                    print.addOutput(tmpout, newPoint(minx - 0, y, z), emit, firstLayerRate, tool).retract = false;
-                    layer.splice(0,0,...tmpout);
+                    print.addOutput(tmpout, newPoint(minx - g, y, z), emit, firstLayerRate, tool).retract = false;
+                    if (firstLayerBrimComb) {
+                        seqn++;
+                    }
+                } else {
+                    // for any layer touching belt, ensure start point is nearest origin
+                    // print.addOutput(tmpout, newPoint(minx, maxy, minz), 0, firstLayerSeek, first.tool);
+                    // print.lastPoint = newPoint(minx, maxy, minz);
+                    seqn = 0;
                 }
+                layer.splice(0,0,...tmpout);
             }
         }
 
