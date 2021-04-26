@@ -316,6 +316,7 @@
                     firstLayerNozzleTemp: 0,
                     firstLayerBedTemp: 0,
                     firstLayerBrim: 0,
+                    firstLayerBrimIn: 0,
                     firstLayerBrimTrig: 0,
                     firstLayerBrimComb: 0,
                     firstLayerBrimGap: 0,
@@ -344,7 +345,7 @@
                     outputPurgeTower: true,
                     outputLayerRetract: false,
                     outputOriginCenter: true,
-                    outputLoopLayers: "",
+                    outputLoops: 0,
                     outputPeelGuard: 0,
                     outputInvertX: false,
                     outputInvertY: false,
@@ -664,7 +665,8 @@
                 detail: "good",
                 animesh: "200",
                 healMesh: false,
-                ortho: false
+                ortho: false,
+                devel: false
             },
             // label state preferences
             labels: {

@@ -479,7 +479,8 @@
         if (isBelt) {
             // find belt min y
             let minby = Infinity;
-            for (let layer of output) {
+            let normout = output.filter(l => !l.anchor);
+            for (let layer of normout) {
                 for (let rec of layer) {
                     let point = rec.point;
                     minby = Math.min(minby, -point.y + point.z * bfactor);
@@ -500,14 +501,14 @@
             //     console.log({process, output});
             // }
 
-            let thresh = firstLayerHeight * 1.05;
+            let thresh = firstLayerHeight * 0.25;
             let seqn = 0;
-
             // iterate over layers, find extrusion on belt and
             // apply corrections and add brim when specified
             for (let layer of output) {
                 let params = getRangeParameters(settings, layer.layer || 0);
                 let firstLayerBrim = params.firstLayerBrim;
+                let firstLayerBrimIn = params.firstLayerBrimIn;
                 let firstLayerBrimTrig = params.firstLayerBrimTrig;
                 let firstLayerBrimComb = params.firstLayerBrimComb;
                 let firstLayerBrimGap = params.firstLayerBrimGap || 0;
@@ -515,6 +516,7 @@
                 let minz = Infinity, maxy = -Infinity, minx = Infinity, maxx = -Infinity;
                 let mins = Infinity;
                 let miny = Infinity;
+                let pads = [];
 
                 for (let rec of layer) {
                     let point = rec.point;
@@ -531,6 +533,10 @@
                         first = rec;
                         // find length of shortest bed-facing segment
                         mins = Math.min(mins, lastout.point.distTo2D(rec.point));
+                        // add to pads list if > 1mm long
+                        if (point.x - lastout.point.x > 1) {
+                            pads.push([lastout.point.x, point.x]);
+                        }
                     }
                     lastout = rec;
                 }
@@ -541,18 +547,47 @@
                 }
                 let tmpout = [];
                 let trigmet = firstLayerBrimTrig === 0 || (firstLayerBrimTrig && mins > firstLayerBrimTrig);
+                let brimax = Math.max(firstLayerBrim, firstLayerBrimIn);
                 // add brim when all conditions met
-                if (firstLayerBrim && seqn <= firstLayerBrimComb && trigmet) {
+                if (brimax && seqn <= firstLayerBrimComb && trigmet) {
                     let { emit, tool } = first;
                     let y = maxy;
                     let z = minz;
                     let g = firstLayerBrimGap || 0;
                     let b = Math.max(firstLayerBrim, 1) + g;
+                    let bi = Math.max(firstLayerBrimIn, 1) + g;
                     layer.last().retract = true;
-                    print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    firstLayerSeek, tool);
-                    print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool).retract = true;
-                    print.addOutput(tmpout, newPoint(minx - b, y, z), 0,    firstLayerSeek, tool);
-                    print.addOutput(tmpout, newPoint(minx - g, y, z), emit, firstLayerRate, tool).retract = false;
+                    // outside brim
+                    if (firstLayerBrim) {
+                        print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    firstLayerSeek, tool);
+                        print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool).retract = true;
+                    }
+                    // inside brim
+                    if (firstLayerBrimIn && pads.length > 1) {
+                        let gaps = [];
+                        let lpad = pads[0];
+                        for (let pad of pads.slice(1)) {
+                            let x0 = lpad[1];
+                            let x1 = pad[0];
+                            lpad = pad;
+                            if (x1 - x0 > bi * 2) {
+                                // over 2x brim so emit two segments
+                                print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    firstLayerSeek, tool);
+                                print.addOutput(tmpout, newPoint(x1 - bi, y, z), emit, firstLayerRate, tool).retract = true;
+                                print.addOutput(tmpout, newPoint(x0 + bi, y, z), 0,    firstLayerSeek, tool);
+                                print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool).retract = true;
+                            } else if (x1 - x0 > bi / 3) {
+                                // over 1/3rd brim length emit single segment
+                                print.addOutput(tmpout, newPoint(x1 - g, y, z), 0,    firstLayerSeek, tool);
+                                print.addOutput(tmpout, newPoint(x0 + g, y, z), emit, firstLayerRate, tool).retract = true;
+                            }
+                        }
+                    }
+                    // outside brim
+                    if (firstLayerBrim) {
+                        print.addOutput(tmpout, newPoint(minx - b, y, z), 0,    firstLayerSeek, tool);
+                        print.addOutput(tmpout, newPoint(minx - g, y, z), emit, firstLayerRate, tool).retract = false;
+                    }
                     if (firstLayerBrimComb) {
                         seqn++;
                     }

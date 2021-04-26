@@ -158,6 +158,7 @@
         control.decimate = UI.decimate.checked;
         control.healMesh = UI.healMesh.checked;
         control.ortho = UI.ortho.checked;
+        control.devel = UI.devel.checked;
         SPACE.view.setZoom(control.reverseZoom, control.zoomSpeed);
         // platform.layout();
         API.conf.save();
@@ -467,6 +468,13 @@
             let q = new THREE.Quaternion();
             q.setFromUnitVectors(contextInt[0].face.normal, new THREE.Vector3(0,0,-1));
             API.selection.rotate(q);
+        }
+    }
+
+    function setFocus() {
+        let int = contextInt[0];
+        if (int && int.object && int.object.widget) {
+            API.space.set_focus(undefined, int.point);
         }
     }
 
@@ -1602,13 +1610,14 @@
             reverseZoom:      UC.newBoolean(LANG.op_invr_s, booleanSave, {title:LANG.op_invr_l}),
             ortho:            UC.newBoolean(LANG.op_orth_s, booleanSave, {title:LANG.op_orth_l}),
             dark:             UC.newBoolean(LANG.op_dark_s, booleanSave, {title:LANG.op_dark_l}),
-            decals:           UC.newBoolean(LANG.op_decl_s, booleanSave, {title:LANG.op_decl_s}),
+            devel:            UC.newBoolean(LANG.op_devl_s, booleanSave, {title:LANG.op_devl_l}),
             danger:           UC.newBoolean(LANG.op_dang_s, booleanSave, {title:LANG.op_dang_l}),
 
             lprefs:           UC.newGroup(LANG.op_disp, $('prefs-gen2'), {inline: true}),
             showOrigin:       UC.newBoolean(LANG.op_shor_s, booleanSave, {title:LANG.op_shor_l}),
             showRulers:       UC.newBoolean(LANG.op_shru_s, booleanSave, {title:LANG.op_shru_l}),
             showSpeeds:       UC.newBoolean(LANG.op_sped_s, speedSave, {title:LANG.op_sped_l}),
+            decals:           UC.newBoolean(LANG.op_decl_s, booleanSave, {title:LANG.op_decl_s}),
             lineType:         UC.newSelect(LANG.op_line_s, {title: LANG.op_line_l, action: lineTypeSave, modes:FDM}, "linetype"),
             animesh:          UC.newSelect(LANG.op_anim_s, {title: LANG.op_anim_l, action: aniMeshSave, modes:CAM}, "animesh"),
             units:            UC.newSelect(LANG.op_unit_s, {title: LANG.op_unit_l, action: unitsSave, modes:CAM, trace:true}, "units"),
@@ -1665,6 +1674,7 @@
             firstLayerPrintMult: UC.newInput(LANG.fl_mult_s, {title:LANG.fl_mult_l, convert:UC.toFloat, modes:FDM}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM, show:isBelt}),
             firstLayerBrim:      UC.newInput(LANG.fl_brim_s, {title:LANG.fl_brim_l, convert:UC.toInt, modes:FDM, show:isBelt}),
+            firstLayerBrimIn:    UC.newInput(LANG.fl_brin_s, {title:LANG.fl_brin_l, convert:UC.toInt, modes:FDM, show:isBelt}),
             firstLayerBrimComb:  UC.newInput(LANG.fl_brco_s, {title:LANG.fl_brco_l, convert:UC.toInt, modes:FDM, show:isBelt}),
             firstLayerBrimTrig:  UC.newInput(LANG.fl_brmn_s, {title:LANG.fl_brmn_l, convert:UC.toInt, modes:FDM, show:isBelt}),
             firstLayerBrimGap:   UC.newInput(LANG.fl_brgp_s, {title:LANG.fl_brgp_l, convert:UC.toFloat, modes:FDM, show:isBelt}),
@@ -1802,7 +1812,7 @@
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             outputPeelGuard:     UC.newInput(LANG.ag_peel_s, {title:LANG.ag_peel_l, convert:UC.toInt, modes:FDM, comma:true, show:isBelt}),
             gcodePauseLayers:    UC.newInput(LANG.ag_paws_s, {title:LANG.ag_paws_l, modes:FDM, comma:true, show:isNotBelt}),
-            outputLoopLayers:    UC.newInput(LANG.ag_loop_s, {title:LANG.ag_loop_l, modes:FDM, comma:true, show:isBelt}),
+            outputLoops:         UC.newInput(LANG.ag_loop_s, {title:LANG.ag_loop_l, convert:UC.toInt, bound:UC.bound(0,1000), modes:FDM, show:isBelt}),
             outputLayerRetract:  UC.newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l, modes:FDM}),
             outputPurgeTower:    UC.newBoolean(LANG.ad_purg_s, onBooleanClick, {title:LANG.ad_purg_l, modes:FDM, show:isMultiHead}),
 
@@ -2403,6 +2413,7 @@
             UI.decimate.checked = control.decimate;
             UI.healMesh.checked = control.healMesh;
             UI.ortho.checked = control.ortho;
+            UI.devel.checked = control.devel;
             lineTypeSave();
             detailSave();
             updateFPS();
@@ -2529,6 +2540,7 @@
         $('context-duplicate').onclick = duplicateSelection;
         $('context-mirror').onclick = mirrorSelection;
         $('context-layflat').onclick = layFlat;
+        $('context-setfocus').onclick = setFocus;
 
         UI.modal.onclick = API.modal.hide;
         UI.modalBox.onclick = (ev) => { ev.stopPropagation() };

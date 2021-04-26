@@ -530,11 +530,12 @@ th, tr, td, label {
 }
 
 .dev-buttons {
-    margin: 5px 15px 0 15px;
+    margin: 1px -1px 0 -1px;
 }
 .dev-buttons button {
     margin-left: 2px;
     margin-right: 2px;
+    padding-bottom: 2px;
 }
 #dg .ext-buttons button {
     cursor: pointer;
@@ -778,7 +779,7 @@ th, tr, td, label {
 }
 #mod-setup .header {
     text-align: center;
-    border-bottom: 1px solid rgba(150,130,200,0.5);
+    border-bottom: 1px solid rgba(126,153,183,1);
     padding-bottom: 5px;
     margin-bottom: 5px;
 }
@@ -909,7 +910,8 @@ th, tr, td, label {
 #code-preview-textarea {
     width: 40em;
     height: 12em;
-    font-size: 10px;
+    font-size: smaller;
+    font-family: Courier,monospace;
 }
 .mod-end {
     height: 10px;
@@ -1466,6 +1468,19 @@ th, tr, td, label {
     padding: 2px 5px 2px 5px;
     margin: 0 2px 3px 2px;
 }
+#layers button {
+    margin-left: 4px;
+    margin-top: 0;
+    margin-bottom: 3px;
+    padding-left: 9px;
+    padding-right: 9px;
+    border-radius: 10px;
+    font-weight: bold;
+    background-color: var(--highlight);
+}
+#layers button:hover {
+    background-color: var(--main-color);
+}
 .var-row {
     white-space: nowrap;
     align-items: center;
@@ -1565,6 +1580,7 @@ th, tr, td, label {
     border-top: 1px solid #ddd;
     border-bottom: 1px solid #ddd;
     background-color: #eee;
+    color: black;
 }
 #context-menu .sep {
     border-top: 1px solid #ddd;

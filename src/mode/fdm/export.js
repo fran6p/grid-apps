@@ -33,6 +33,7 @@
             extrudeSet = false,
             time = 0,
             layer = 0,
+            layerno = 0,
             pause = [],
             pauseCmd = device.gcodePause,
             output = [],
@@ -51,7 +52,7 @@
             blast = 0,
             blastz = 0,
             process = settings.process,
-            loops = process.outputLoopLayers,
+            loops = process.outputLoops || 0,
             zhop = process.zHopDistance || 0, // range
             seekMMM = process.outputSeekrate * 60,
             retDist = process.outputRetractDist || 0, // range
@@ -128,27 +129,31 @@
             });
         }
 
-        if (isBelt && loops) {
-            loops = loops.split(',').map(range => {
-                return range.split('-').map(v => parseInt(v));
-            }).filter(a => a.length > 1).map(a => {
-                return {
-                    start: a[0],
-                    end: a[1] ? a[1] + 1 : Infinity,
-                    iter: a[2] >= 0 ? a[2] : 1
-                }
+        // collect loops from ranges and synth range array
+        let rloops = [];
+        if (loops > 0) {
+            rloops.push({
+                start: layers[0].slice.index,
+                end: layers.last().slice.index,
+                iter: loops - 1
             });
         }
-        if (!isBelt || (loops && loops.length < 1)) {
-            loops = undefined;
+        for (let range of process.ranges) {
+            console.log({range});
+            if (range.fields.outputLoops) {
+                rloops.push({
+                    start: range.lo,
+                    end: range.hi,
+                    iter: range.fields.outputLoops - 1
+                });
+            }
         }
+        loops = isBelt && rloops.length ? rloops : undefined;
 
         (process.gcodePauseLayers || "").split(",").forEach(function(lv) {
             let v = parseInt(lv);
             if (v >= 0) pause.push(v);
         });
-
-        // console.log(loops)
 
         append = function(line) {
             if (line) {
@@ -333,6 +338,7 @@
 
         while (layer < layers.length) {
             path = layers[layer];
+            layerno = path.slice.index;
 
             // range overrides
             if (path.layer >= 0) {
@@ -366,15 +372,17 @@
                 appendAllSub(pauseCmd)
             }
 
+            let endloop = false;
             if (loops) {
                 if (inLoop) {
-                    if (layer === inLoop.end) {
-                        append(`M808`);
-                        inLoop = undefined;
+                    if (layerno === inLoop.end) {
+                        endloop = true;
+                        // append(`M808`);
+                        // inLoop = undefined;
                     }
                 } else {
                     for (let loop of loops) {
-                        if (layer === loop.start) {
+                        if (layerno === loop.start) {
                             append(`M808 L${loop.iter}`);
                             if (extrudeAbs) {
                                 append(`G92 Z${lout.z.round(decimals)} E${outputLength.round(decimals)}`);
@@ -556,6 +564,12 @@
                 laste = out.emit;
             }
             layer++;
+
+            // end open loop when detected
+            if (endloop) {
+                append(`M808`);
+                inLoop = undefined;
+            }
         }
         drainQ();
 
@@ -622,7 +636,7 @@
 
         subst.material = UTIL.round(emitted,2);
         subst.time = UTIL.round(time,2);
-        subst['print-time'] = subst.time;
+        subst['print_time'] = subst.time;
 
         append("; --- shutdown ---");
         appendAllSub(device.gcodePost);
