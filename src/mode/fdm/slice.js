@@ -200,7 +200,7 @@
                     tops = slice.topPolys();
                     for (let peer of widget.group) {
                         // skip self
-                        if (peer === widget) {
+                        if (peer === widget || !peer.slices) {
                             continue;
                         }
                         for (let pslice of peer.slices) {
@@ -332,8 +332,9 @@
                 // also find max width of first 5 layers
                 let start;
                 let minx = Infinity, maxx = -Infinity;
+                let peek = 0;
                 for (let slice of slices) {
-                    if (slice.index < 5) {
+                    if (slice.groups.length && peek++ < 5) {
                         for (let poly of slice.topPolys()) {
                             minx = Math.min(minx, poly.bounds.minx);
                             maxx = Math.max(maxx, poly.bounds.maxx);
@@ -356,6 +357,7 @@
                     minx -= brim;
                     maxx += brim;
                 }
+                let adds = [];
                 while (offset && start && offset >= sliceHeight) {
                     let addto = start.down;
                     if (!addto) {
@@ -372,9 +374,39 @@
                     let y = z - smin - (nozzleSize / 2);
                     // let splat = BASE.newPolygon().add(wb.min.x, y, z).add(wb.max.x, y, z).setOpen();
                     let splat = BASE.newPolygon().add(minx, y, z).add(maxx, y, z).setOpen();
-                    addto.addTop(splat).fill_sparse = [ splat ];
+                    let snew = addto.addTop(splat).fill_sparse = [ splat ];
+                    adds.push(snew);
                     start = addto;
                     offset -= sliceHeight;
+                }
+                // add anchor bump
+                let bump = spro.firstLayerBeltBump;
+                if (bump) {
+                    adds = adds.reverse().slice(1, adds.length - 1);
+                    let count = 1;
+                    for (let add of adds) {
+                        let poly = add[0];
+                        let y = count++ * -nozzleSize;
+                        if (-y > bump) {
+                            count--;
+                            // break;
+                        }
+                        let first = poly.first();
+                        poly.push(poly.last().add({x:0, y, z:0}));
+                        poly.push(poly.first().add({x:0, y, z:0}));
+                        poly.setClosed();
+                        if (count > 2 && maxx - minx > 10) {
+                            let mp = (maxx + minx) / 2;
+                            let dx = (maxx - minx - 2);
+                            dx = (Math.floor(dx / 3) * 3) / 2;
+                            let fy = first.y;
+                            let fz = first.z;
+                            let n2 = nozzleSize / 2;
+                            for (let x = mp - dx; x <= mp + dx ; x += 3) {
+                                add.push( BASE.newPolygon().add(x, fy - n2, fz).add(x, fy + y + n2, fz).setOpen() );
+                            }
+                        }
+                    }
                 }
             }
 
