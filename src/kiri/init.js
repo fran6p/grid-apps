@@ -752,6 +752,8 @@
                 UI.deviceName,
                 UI.gcodePre,
                 UI.gcodePost,
+                UI.gcodeExt,
+                UI.gcodeInt,
                 UI.gcodePause,
                 UI.bedDepth,
                 UI.bedWidth,
@@ -1592,19 +1594,21 @@
             gcodeFExt:        UC.newInput(LANG.dv_fext_s, {title:LANG.dv_fext_l, modes:CAM_LASER, size:7, text:true}),
 
             gcodeEd:          UC.newGroup(LANG.dv_gr_gco, $('dg'), {group:"dgcp", inline:true, modes:GCODE}),
-            gcodeFanTrack: UC.newRow([
+            gcodeMacros:      UC.newRow([
                 (UI.gcodePre = UC.newGCode(LANG.dv_head_s, {title:LANG.dv_head_l, modes:GCODE, area:gcode})).button,
                 (UI.gcodePost = UC.newGCode(LANG.dv_foot_s, {title:LANG.dv_foot_l, modes:GCODE, area:gcode})).button,
                 (UI.gcodeFan = UC.newGCode(LANG.dv_fanp_s, {title:LANG.dv_fanp_l, modes:FDM, area:gcode})).button,
                 (UI.gcodeTrack = UC.newGCode(LANG.dv_prog_s, {title:LANG.dv_prog_l, modes:FDM, area:gcode})).button,
                 (UI.gcodeLayer = UC.newGCode(LANG.dv_layr_s, {title:LANG.dv_layr_l, modes:FDM, area:gcode})).button,
                 (UI.gcodePause = UC.newGCode(LANG.dv_paus_s, {title:LANG.dv_paus_l, modes:FDM, area:gcode})).button,
+                (UI.gcodeExt = UC.newGCode(LANG.dv_pext_s, {title:LANG.dv_pext_l, modes:FDM, area:gcode, show:isDanger})).button,
+                (UI.gcodeInt = UC.newGCode(LANG.dv_pint_s, {title:LANG.dv_pint_l, modes:FDM, area:gcode, show:isDanger})).button,
                 (UI.gcodeLaserOn = UC.newGCode(LANG.dv_lzon_s, {title:LANG.dv_lzon_l, modes:LASER, area:gcode})).button,
                 (UI.gcodeLaserOff = UC.newGCode(LANG.dv_lzof_s, {title:LANG.dv_lzof_l, modes:LASER, area:gcode})).button,
                 (UI.gcodeChange = UC.newGCode(LANG.dv_tool_s, {title:LANG.dv_tool_l, modes:CAM, area:gcode})).button,
                 (UI.gcodeDwell = UC.newGCode(LANG.dv_dwll_s, {title:LANG.dv_dwll_l, modes:CAM, area:gcode})).button,
                 (UI.gcodeSpindle = UC.newGCode(LANG.dv_sspd_s, {title:LANG.dv_sspd_l, modes:CAM, area:gcode})).button
-            ], {class:"ext-buttons f-row"}),
+            ], {class:"ext-buttons f-row gcode-macros"}),
 
             lprefs:           UC.newGroup(LANG.op_menu, $('prefs-gen1'), {inline: true}),
             reverseZoom:      UC.newBoolean(LANG.op_invr_s, booleanSave, {title:LANG.op_invr_l}),
@@ -1786,6 +1790,9 @@
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceShellOrder:     UC.newSelect(LANG.sl_ordr_s, {title:LANG.sl_ordr_l, modes:FDM}, "shell"),
             sliceLayerStart:     UC.newSelect(LANG.sl_strt_s, {title:LANG.sl_strt_l, modes:FDM}, "start"),
+            fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
+            outputLayerRetract:  UC.newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l, modes:FDM}),
+            outputBeltFirst:     UC.newBoolean(LANG.ad_lbir_s, onBooleanClick, {title:LANG.ad_lbir_l, modes:FDM}),
             camConventional:     UC.newBoolean(LANG.ou_conv_s, onBooleanClick, {title:LANG.ou_conv_l, modes:CAM}),
             camEaseDown:         UC.newBoolean(LANG.cr_ease_s, onBooleanClick, {title:LANG.cr_ease_l, modes:CAM}),
             camDepthFirst:       UC.newBoolean(LANG.ou_depf_s, onBooleanClick, {title:LANG.ou_depf_l, modes:CAM}),
@@ -1814,7 +1821,6 @@
             outputPeelGuard:     UC.newInput(LANG.ag_peel_s, {title:LANG.ag_peel_l, convert:UC.toInt, modes:FDM, comma:true, show:isBelt}),
             gcodePauseLayers:    UC.newInput(LANG.ag_paws_s, {title:LANG.ag_paws_l, modes:FDM, comma:true, show:isNotBelt}),
             outputLoops:         UC.newInput(LANG.ag_loop_s, {title:LANG.ag_loop_l, convert:UC.toInt, bound:UC.bound(0,1000), modes:FDM, show:isBelt}),
-            outputLayerRetract:  UC.newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l, modes:FDM}),
             outputPurgeTower:    UC.newBoolean(LANG.ad_purg_s, onBooleanClick, {title:LANG.ad_purg_l, modes:FDM, show:isMultiHead}),
 
             // SLA
@@ -2233,7 +2239,7 @@
         // block standard browser context menu
         DOC.oncontextmenu = (event) => {
             let et = event.target;
-            if (et.tagName === 'CANVAS' || et.id === 'context-menu') {
+            if (et.tagName === 'CANVAS' || et.id === 'context-menu' || et.classList.contains('draggable')) {
                 event.preventDefault();
                 event.stopPropagation();
                 return false;

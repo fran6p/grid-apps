@@ -27,7 +27,7 @@
         PROTO = Object.clone(COLOR),
         bwcomp = (1 / Math.cos(Math.PI/4)),
         getRangeParameters = FDM.getRangeParameters,
-        debug = true;
+        debug = false;
 
     let isThin = false; // force line rendering
     let isFlat = false; // force flat rendering
@@ -38,7 +38,7 @@
             if (isFlat) {
                 opt.flat = true;
                 opt.outline = true;
-                return opt
+                return opt;
             }
             if (isThin) return null;
         }
@@ -311,18 +311,21 @@
                 }
                 sliceFillAngle += 90.0;
             }, "offsets");
-
             // add lead in when specified in belt mode
             if (!isSynth && isBelt) {
-                let wb = widget.bounds;
                 // find adjusted zero point from slices
                 let smin = Infinity;
                 for (let slice of slices) {
+                    // skip empty / possible anchor
+                    // if (!slice.lines.length) {
+                    //     slice.belt = { miny: 0, touch: false };
+                    //     continue;
+                    // }
                     let miny = Infinity;
                     for (let poly of slice.topPolys()) {
                         let y = poly.bounds.maxy;
                         let z = slice.z;
-                        let by = -y + z;
+                        let by = z - y;
                         if (by < miny) miny = by;
                         if (by < smin) smin = by;
                     }
@@ -345,7 +348,6 @@
                         if (!start) start = slice;
                     }
                 }
-                // console.log({smin: smin.round(4)});
                 let offset = spro.firstLayerBeltLead * beltfact;
                 // ensure we start against a layer with shells
                 while (start.up && start.topShells().length === 0) {
@@ -367,9 +369,14 @@
                         addto.up = start;
                         start.down = addto;
                         slices.splice(0,0,addto);
+                    // } else {
+                    //     console.log({add_to_existing_slice: addto});
                     }
                     addto.index = -1;
                     addto.belt.anchor = true;
+                    // this allows the anchor to print bi-directionally
+                    // by removing the forced start-point in print.js
+                    addto.belt.touch = false;
                     let z = addto.z;
                     let y = z - smin - (nozzleSize / 2);
                     // let splat = BASE.newPolygon().add(wb.min.x, y, z).add(wb.max.x, y, z).setOpen();
@@ -386,7 +393,7 @@
                     let count = 1;
                     for (let add of adds) {
                         let poly = add[0];
-                        let y = count++ * -nozzleSize;
+                        let y = count++ * -start.height * 2;
                         if (-y > bump) {
                             count--;
                             // break;
@@ -534,7 +541,7 @@
                 .setLayer("gaps", COLOR.gaps)
                 .addPolys(top.gaps, vopt({ offset, height, thin: true }));
 
-            if (isThin && devel) {
+            if (isThin && devel && top.fill_off && top.fill_off.length) {
                 slice.output()
                     .setLayer('fill inset', { face: 0, line: 0xaaaaaa, check: 0xaaaaaa })
                     .addPolys(top.fill_off);

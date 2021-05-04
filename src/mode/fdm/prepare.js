@@ -11,7 +11,8 @@
         FDM = KIRI.driver.FDM,
         newPoint = BASE.newPoint,
         newPolygon = BASE.newPolygon,
-        getRangeParameters = FDM.getRangeParameters;
+        getRangeParameters = FDM.getRangeParameters,
+        debug = false;
 
     /**
      * DRIVER PRINT CONTRACT
@@ -47,8 +48,7 @@
             print = self.worker.print = KIRI.newPrint(settings, widgets),
             beltYoff = device.bedDepth / 2,
             beltfact = Math.cos(Math.PI/4),
-            invbfact = 1 / beltfact,
-            bfactor = invbfact * beltfact;
+            invbfact = 1 / beltfact;
 
         // compute bounds if missing
         if (!bounds) {
@@ -308,20 +308,6 @@
                     y: o,
                     z: o
                 };
-                // offset = { x:0, y:0, z:0 };
-                // locate the lowest point in slices and widget overall
-                let minby = Infinity;
-                for (let slice of widget.slices) {
-                    slice.minby = Infinity;
-                    for (let top of slice.tops) {
-                        let poly = top.poly;
-                        for (let point of poly.points) {
-                            let ypos = -point.y + point.z * bfactor;
-                            slice.minby = Math.min(slice.minby, ypos);
-                            minby = Math.min(minby, ypos);
-                        }
-                    }
-                }
             } else {
                 // when rafts used this is non-zero
                 offset.z = zoff;
@@ -472,33 +458,25 @@
 
         // post-process for base extrusions (touching the bed)
         if (isBelt) {
-            // find belt min y
-            let minby = Infinity;
-            let normout = output.filter(l => !l.anchor);
-            for (let layer of normout) {
-                for (let rec of layer) {
-                    let point = rec.point;
-                    if (rec.emit) {
-                        minby = Math.min(minby, -point.y + point.z * bfactor);
-                    }
-                }
-            }
-            // correct y offset to desired layer offset
-            let miny = process.firstLayerYOffset || 0;
-            let poff = minby - miny;
+            // // correct y offset to desired layer offset
+            let seqn = 0;
+            // tune base threshold
+            let thresh = Infinity;
             for (let layer of output) {
                 for (let rec of layer) {
-                    rec.point.y += poff;
+                    let point = rec.point;
+                    thresh = Math.min(thresh, point.z - point.y);
                 }
             }
-
-            let thresh = firstLayerHeight * 0.25;
-            let seqn = 0;
+            // store this offset to be removed from Y values in export
+            print.belty = thresh;
+            thresh = thresh + firstLayerHeight * 0.25;
             // iterate over layers, find extrusion on belt and
             // apply corrections and add brim when specified
             for (let layer of output) {
                 let params = getRangeParameters(settings, layer.layer || 0);
-                let firstLayerBrim = params.firstLayerBrim;
+                let brimHalf = params.firstLayerBrim < 0;
+                let firstLayerBrim = Math.abs(params.firstLayerBrim);
                 let firstLayerBrimIn = params.firstLayerBrimIn;
                 let firstLayerBrimTrig = params.firstLayerBrimTrig;
                 let firstLayerBrimComb = params.firstLayerBrimComb;
@@ -511,7 +489,7 @@
 
                 for (let rec of layer) {
                     let point = rec.point;
-                    let belty = rec.belty = -point.y + point.z * bfactor;
+                    let belty = rec.belty = -point.y + point.z;
                     miny = Math.min(miny, belty);
                     if (rec.emit && belty <= thresh && lastout && Math.abs(lastout.belty - belty) < 0.005) {
                         // apply base speed to segments touching belt
@@ -549,7 +527,7 @@
                     let bi = Math.max(firstLayerBrimIn, 1) + g;
                     layer.last().retract = true;
                     // outside brim
-                    if (firstLayerBrim) {
+                    if (firstLayerBrim && !brimHalf) {
                         print.addOutput(tmpout, newPoint(maxx + b, y, z), 0,    firstLayerSeek, tool);
                         print.addOutput(tmpout, newPoint(maxx + g, y, z), emit, firstLayerRate, tool).retract = true;
                     }

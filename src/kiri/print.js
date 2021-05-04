@@ -25,7 +25,8 @@
     let lastPoint = null,
         lastEmit = null,
         lastOut = null,
-        lastPos;
+        lastPos,
+        nextType;
 
     KIRI.Print = Print;
 
@@ -404,11 +405,16 @@
     /**
      * @constructor
      */
-    function Output(point, emit, speed, tool) {
+    function Output(point, emit, speed, tool, type) {
         this.point = point; // point to emit
         this.emit = emit; // emit (feed for printers, power for lasers, cut for cam)
         this.speed = speed;
         this.tool = tool;
+        this.type = type;
+    }
+
+    function setType(type) {
+        nextType = type;
     }
 
     /**
@@ -429,8 +435,9 @@
         // if (emit && emit < 1) console.log(emit);
         lastPoint = point;
         lastEmit = emit;
-        lastOut = new Output(point, emit, speed, tool);
+        lastOut = new Output(point, emit, speed, tool, nextType);
         array.push(lastOut);
+        nextType = undefined;
         return lastOut;
     }
 
@@ -534,6 +541,7 @@
             antiBacklash = process.antiBacklash,
             wipeDist = process.outputRetractWipe || 0,
             isBelt = device.bedBelt,
+            beltFirst = process.outputBeltFirst || false,
             startClone = startPoint.clone(),
             seedPoint = opt.seedPoint || startPoint,
             z = slice.z,
@@ -568,9 +576,6 @@
             if (slice.index < 0) {
                 return false;
             }
-            if (opt.danger) {
-                return retractRequired(p1, p2);
-            }
             let int = false;
             slice.topPolysFlat().forEach(function(poly) {
                 if (!int) poly.forEachSegment(function(s1, s2) {
@@ -579,14 +584,17 @@
                     }
                 });
             });
+            // if intersecting, look for a route around
+            if (int && opt.danger) {
+                return !routeAround(p1, p2);
+            }
             return int;
         }
 
         // returns true if no path around and retract required
         // returns false if routed around or no retract
-        function retractRequired(p1, p2) {
+        function routeAround(p1, p2) {
             const dbug = false;
-
             if (dbug === slice.index) console.log(slice.index, {p1, p2, d: p1.distTo2D(p2)});
 
             let ints = [];
@@ -632,6 +640,7 @@
                     return true;
                 }
                 // mark invalid intersect pairs (low or zero dist, etc)
+                // TODO: only if this is the outer pair and there are closer inner pairs
                 if (i1.ip.distTo2D(i2.ip) < retractDist) {
                     if (dbug === slice.index) console.log(slice.index, {int_dist_too_small: i1.ip.distTo2D(i2.ip), retractDist});
                     ints[i] = undefined;
@@ -1024,6 +1033,10 @@
                     outputFills(next.fill, {fast: true});
                 }
             } else {
+                if (lastTop && lastTop !== next) {
+                    retract();
+                }
+
                 // control of layer start point
                 switch (process.sliceLayerStart) {
                     case "center":
@@ -1038,8 +1051,13 @@
                 // and enforce optimal shell order (outer first)
                 if (isBelt && opt.onBelt) {
                     startPoint = startClone;
-                    shellOrder = -1;
+                    if (beltFirst) {
+                        shellOrder = -1;
+                    }
                 }
+
+                // flag extrusion type as exterior
+                setType('ext');
 
                 // innermost shells
                 let inner = next.innerShells() || [];
@@ -1051,6 +1069,9 @@
 
                 // output outer polygons
                 if (shellOrder === -1) outputTraces(inner, { sort: shellOrder });
+
+                // flag extrusion type as interior
+                setType('int');
 
                 // output thin fill
                 outputFills(next.thin_fill, {near: true});

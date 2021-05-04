@@ -7,7 +7,8 @@
     let KIRI = self.kiri,
         BASE = self.base,
         UTIL = BASE.util,
-        FDM = KIRI.driver.FDM;
+        FDM = KIRI.driver.FDM,
+        debug = false;
 
     /**
      * @returns {Array} gcode lines
@@ -21,6 +22,8 @@
             gcodeFan = device.gcodeFan,
             gcodeLayer = device.gcodeLayer,
             gcodeTrack = device.gcodeTrack,
+            gcodeExt = device.gcodeExt,
+            gcodeInt = device.gcodeInt,
             tool = 0,
             fwRetract = device.fwRetract,
             isDanger = settings.controller.danger,
@@ -52,6 +55,7 @@
             blast = 0,
             blastz = 0,
             process = settings.process,
+            belt_add_y = (process.firstLayerYOffset || 0) - (print.belty || 0),
             loops = process.outputLoops || 0,
             zhop = process.zHopDistance || 0, // range
             seekMMM = process.outputSeekrate * 60,
@@ -69,6 +73,7 @@
             nozzleTemp = process.firstLayerNozzleTemp || process.outputTemp,
             bedTemp = process.firstLayerBedTemp || process.outputBedTemp,
             fanSpeed = undefined,
+            lastType = undefined,
             lastNozzleTemp = nozzleTemp,
             lastBedTemp = bedTemp,
             lastFanSpeed = fanSpeed,
@@ -97,7 +102,8 @@
             bcos = Math.cos(Math.PI/4),
             icos = 1 / bcos,
             inLoop,
-            arcQ = [];
+            arcQ = [],
+            minz = { x: Infinity, y: Infinity, z: Infinity };
 
         // smallish band-aid. refactor above to remove redundancy
         function updateParams(layer) {
@@ -139,7 +145,6 @@
             });
         }
         for (let range of process.ranges) {
-            console.log({range});
             if (range.fields.outputLoops) {
                 rloops.push({
                     start: range.lo,
@@ -289,12 +294,17 @@
                 let zheight = path ? path.height || 0 : 0;
                 epos.x = originCenter ? -pos.x : device.bedWidth - pos.x;
                 epos.z = blastz = pos.z * icos;
-                epos.y = -pos.y + epos.z * bcos;
+                epos.y = -pos.y + epos.z * bcos + belt_add_y;
                 lout = epos;
             }
             if (emit.x) o.append(" X").append(epos.x.toFixed(decimals));
             if (emit.y) o.append(" Y").append(epos.y.toFixed(decimals));
             if (emit.z) o.append(" Z").append(epos.z.toFixed(decimals));
+            if (debug) {
+                if (emit.x) minz.x = Math.min(minz.x, epos.x);
+                if (emit.y) minz.y = Math.min(minz.y, epos.y);
+                if (emit.z) minz.z = Math.min(minz.z, epos.z);
+            }
             if (typeof newpos.e === 'number') {
                 outputLength += newpos.e;
                 if (extrudeAbs) {
@@ -427,6 +437,19 @@
             for (pidx=0; pidx<path.length; pidx++) {
                 out = path[pidx];
                 speedMMM = (out.speed || process.outputFeedrate) * 60; // range
+
+                // emit gcode macro for changed print region
+                if (out.type !== last.type) {
+                    switch (out.type) {
+                        case 'ext':
+                            appendAllSub(gcodeExt);
+                            break;
+                        case 'int':
+                            appendAllSub(gcodeInt);
+                            break;
+                    }
+                    lastType = out.type;
+                }
 
                 // look for extruder change, run scripts, recalc emit factor
                 if (out.tool !== undefined && out.tool !== tool) {
@@ -650,6 +673,10 @@
         print.lines = lines;
         print.bytes = bytes + lines - 1;
         print.time = time;
+
+        if (debug) {
+            console.log('minz', minz);
+        }
     };
 
 })();
