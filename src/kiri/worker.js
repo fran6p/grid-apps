@@ -74,7 +74,7 @@ KIRI.worker = {
             wgroup[data.group] = group;
         }
         let vertices = new Float32Array(data.vertices),
-            widget = KIRI.newWidget(data.id, group).loadVertices(vertices);
+            widget = KIRI.newWidget(data.id, group).loadVertices(vertices).setInWorker();
 
         // do it here so cancel can work
         wcache[data.id] = widget;
@@ -220,6 +220,7 @@ KIRI.worker = {
 
         const unitScale = settings.controller.units === 'in' ? (1 / 25.4) : 1;
         const print = current.print || {};
+        const minSpeed = (print.minSpeed || 0) * unitScale;
         const maxSpeed = (print.maxSpeed || 0) * unitScale;
         const state = { zeros: [] };
 
@@ -228,6 +229,7 @@ KIRI.worker = {
         send.done({
             done: true,
             // output: KIRI.codec.encode(layers, state),
+            minSpeed,
             maxSpeed
         }, state.zeros);
     },
@@ -282,11 +284,12 @@ KIRI.worker = {
         const parsed = print.parseGCode(code, offset, progress => {
             send.data({ progress: progress * 0.25 });
         }, done => {
+            const minSpeed = print.minSpeed;
             const maxSpeed = print.maxSpeed;
             const layers = KIRI.driver.FDM.prepareRender(done.output, progress => {
                 send.data({ progress: 0.25 + progress * 0.75 });
             }, { thin: thin || print.belt, flat, tools });
-            send.done({parsed: KIRI.codec.encode(layers), maxSpeed});
+            send.done({parsed: KIRI.codec.encode(layers), maxSpeed, minSpeed});
         }, {
             fdm: mode === 'FDM',
             belt: device.bedBelt
@@ -560,9 +563,15 @@ KIRI.worker = {
     }
 };
 
-self.onmessage = function(e) {
+dispatch.send = (msg) => {
+    // console.log('worker send', msg);
+    self.postMessage(msg);
+};
+
+dispatch.onmessage = self.onmessage = function(e) {
+    // console.log('worker recv', e);
     let time_recv = time(),
-        msg = e.data,
+        msg = e.data || {},
         run = dispatch[msg.task],
         send = {
             data : function(data,direct) {
@@ -572,7 +581,7 @@ self.onmessage = function(e) {
                 //         sz:direct.map(z => z.byteLength).reduce((a,v) => a+v)
                 //     });
                 // }
-                self.postMessage({
+                dispatch.send({
                     seq: msg.seq,
                     task: msg.task,
                     done: false,
@@ -586,7 +595,7 @@ self.onmessage = function(e) {
                 //         sz:direct.map(z => z.byteLength).reduce((a,v) => a+v)
                 //     });
                 // }
-                self.postMessage({
+                dispatch.send({
                     seq: msg.seq,
                     task: msg.task,
                     done: true,
@@ -602,7 +611,7 @@ self.onmessage = function(e) {
                 time_send = time(),
                 time_proc = time_send - time_recv;
 
-            if (output) self.postMessage({
+            if (output) dispatch.send({
                 seq: msg.seq,
                 task: msg.task,
                 time_send: time_xfer,
@@ -617,7 +626,7 @@ self.onmessage = function(e) {
             send.done({error: wrkerr.toString()});
         }
     } else {
-        console.log({kiri_msg:e});
+        console.log({worker_unhandled: e, msg, fn: dispatch[msg.task]});
     }
 };
 

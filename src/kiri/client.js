@@ -32,15 +32,16 @@ function send(fn, data, onreply, zerocopy) {
         // track it only when we expect and can handle a reply
         running[seq] = { fn:onreply };
     }
-    // console.log('send', {fn, data, onreply});
-
+    let msg = {
+        seq: seq,
+        task: fn,
+        time: time(),
+        data: data
+    };
+    // console.log('client send', msg);
+    // if (!fn) { console.trace({empty_fn: data}) };
     try {
-        worker.postMessage({
-            seq: seq,
-            task: fn,
-            time: time(),
-            data: data
-        }, zerocopy);
+        worker.postMessage(msg, zerocopy);
     } catch (error) {
         console.trace('work send error', {data, error});
     }
@@ -92,13 +93,13 @@ KIRI.work = {
         running = {};
         worker = KIRI.work.newWorker();
 
-        worker.onmessage = function(e) {
+        CLIENT.onmessage = worker.onmessage = function(e) {
             let now = time(),
                 reply = e.data,
                 record = running[reply.seq],
                 onreply = record ? record.fn : undefined;
 
-            // console.log('recv', reply.data)
+            // console.log('client recv', e)
             if (reply.done) {
                 delete running[reply.seq];
             }
@@ -208,7 +209,7 @@ KIRI.work = {
                 update(reply.progress, reply.message, reply.layer);
             }
             if (reply.done) {
-                done(reply.output, reply.maxSpeed);
+                done(reply.output, reply.maxSpeed, reply.minSpeed);
             }
             if (reply.error) {
                 done(reply);
@@ -259,7 +260,7 @@ KIRI.work = {
                 progress(reply.progress);
             }
             if (reply.parsed) {
-                done(KIRI.codec.decode(reply.parsed), reply.maxSpeed);
+                done(KIRI.codec.decode(reply.parsed), reply.maxSpeed, reply.minSpeed);
             }
         });
     },

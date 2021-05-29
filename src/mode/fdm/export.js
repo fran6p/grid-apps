@@ -92,6 +92,7 @@
                 bottom: offset ? 0 : -device.bedDepth/2,
                 z_max: device.maxHeight,
                 layers: layers.length,
+                progress: 0,
                 nozzle: 0,
                 tool: 0
             },
@@ -452,7 +453,7 @@
                 }
 
                 // look for extruder change, run scripts, recalc emit factor
-                if (out.tool !== undefined && out.tool !== tool) {
+                if (out.tool !== undefined && out.tool != tool) {
                     appendAllSub(extruder.extDeselect);
                     tool = out.tool;
                     subst.nozzle = subst.tool = tool;

@@ -268,6 +268,8 @@ kiri.lang['en-us'] = {
     // FDM SHELLS
     sl_shel_s:      "shell count",
     sl_shel_l:      ["number of perimeter","walls to generate"],
+    sl_line_s:      "line width",
+    sl_line_l:      ["extrusion width in millimeters","0 = nozzle diameter"],
     sl_ordr_s:      "shell order",
     sl_ordr_l:      ["output shell order","inside to outside","or outside to inside","affects surface quality"],
     sl_strt_s:      "layer start",
@@ -280,6 +282,8 @@ kiri.lang['en-us'] = {
     fi_type:        "fill type",
     fi_pcnt_s:      "fill fraction",
     fi_pcnt_l:      ["fill density values","0.0 - 1.0"],
+    fi_rept_s:      "fill repeat",
+    fi_rept_l:      ["number of times to repeat","unchanged fill layers"],
     fi_angl_s:      "solid start",
     fi_angl_l:      ["starting angle in degrees","90 degrees added to ","each following layer","applies only to solid layers"],
     fi_wdth_s:      "solid width",

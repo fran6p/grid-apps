@@ -325,7 +325,7 @@
             }
             for (let slice of widget.slices) {
                 slice.widget = widget;
-                let z = slice.z + widget.offset.z;
+                let z = (slice.z + widget.offset.z).round(2);
                 let rec = zrec[z] = zrec[z] || {z, slices:[]};
                 if (rec.slices.length === 0) {
                     cake.push(rec);
@@ -515,7 +515,7 @@
                     continue;
                 }
                 let tmpout = [];
-                let trigmet = firstLayerBrimTrig === 0 || (firstLayerBrimTrig && mins > firstLayerBrimTrig);
+                let trigmet = firstLayerBrimTrig === 0 || (firstLayerBrimTrig && mins <= firstLayerBrimTrig);
                 let brimax = Math.max(firstLayerBrim, firstLayerBrimIn);
                 // add brim when all conditions met
                 if (brimax && seqn <= firstLayerBrimComb && trigmet) {
@@ -629,12 +629,25 @@
             opacity: flat ? 0.5 : 1
         };
 
-        const maxspd = levels.map(level => {
-            return level.map(o => o.speed || 0).reduce((a, v) => Math.max(a,v));
-        }).reduce((a, v) => Math.max(a, v)) + 1;
+        let minspd = Infinity;
+        let maxspd = 0;
+
+        for (let level of levels) {
+            for (let o of level) {
+                if (o.speed) {
+                    minspd = Math.min(minspd, o.speed);
+                    maxspd = Math.max(maxspd, o.speed);
+                }
+            }
+        }
+
+        // const maxspd = levels.map(level => {
+        //     return level.map(o => o.speed || 0).reduce((a, v) => Math.max(a,v));
+        // }).reduce((a, v) => Math.max(a, v)) + 1;
 
         // for reporting
-        self.worker.print.maxSpeed = maxspd - 1;
+        self.worker.print.minSpeed = minspd;
+        self.worker.print.maxSpeed = maxspd;
         self.worker.print.thinColor = thin;
         self.worker.print.flatColor = flat;
 

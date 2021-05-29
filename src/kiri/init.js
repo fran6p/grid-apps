@@ -1650,6 +1650,8 @@
             sliceMinHeight:      UC.newInput(LANG.ad_minl_s, {title:LANG.ad_minl_l, bound:UC.bound(0,3.0), convert:UC.toFloat, modes:FDM, show: () => UI.sliceAdaptive.checked}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceShells:         UC.newInput(LANG.sl_shel_s, {title:LANG.sl_shel_l, convert:UC.toFloat, modes:FDM}),
+            sliceLineWidth:      UC.newInput(LANG.sl_line_s, {title:LANG.sl_line_l, convert:UC.toFloat, bound:UC.bound(0,5), modes:FDM}),
+            fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceTopLayers:      UC.newInput(LANG.sl_ltop_s, {title:LANG.sl_ltop_l, convert:UC.toInt, modes:FDM}),
             sliceSolidLayers:    UC.newInput(LANG.sl_lsld_s, {title:LANG.sl_lsld_l, convert:UC.toInt, modes:FDM}),
             sliceBottomLayers:   UC.newInput(LANG.sl_lbot_s, {title:LANG.sl_lbot_l, convert:UC.toInt, modes:FDM}),
@@ -1693,8 +1695,9 @@
             outputRaft:          UC.newBoolean(LANG.fr_nabl_s, onBooleanClick, {title:LANG.fr_nabl_l, modes:FDM, trigger: true, show:isNotBelt}),
 
             fdmInfill:           UC.newGroup(LANG.fi_menu, $('settings'), {modes:FDM}),
-            sliceFillType:       UC.newSelect(LANG.fi_type, {modes:FDM}, "infill"),
+            sliceFillType:       UC.newSelect(LANG.fi_type, {modes:FDM, trigger:true}, "infill"),
             sliceFillSparse:     UC.newInput(LANG.fi_pcnt_s, {title:LANG.fi_pcnt_l, convert:UC.toFloat, bound:UC.bound(0.0,1.0), modes:FDM}),
+            sliceFillRepeat:     UC.newInput(LANG.fi_rept_s, {title:LANG.fi_rept_l, convert:UC.toInt, bound:UC.bound(1,10), show:fillShow, modes:FDM}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             sliceFillOverlap:    UC.newInput(LANG.fi_over_s, {title:LANG.fi_over_l, convert:UC.toFloat, bound:UC.bound(0.0,2.0), modes:FDM}),
             sliceFillRate:       UC.newInput(LANG.ou_feed_s, {title:LANG.fi_rate_l, convert:UC.toInt, bound:UC.bound(0,300), modes:FDM}),
@@ -1792,7 +1795,7 @@
             sliceLayerStart:     UC.newSelect(LANG.sl_strt_s, {title:LANG.sl_strt_l, modes:FDM}, "start"),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
             outputLayerRetract:  UC.newBoolean(LANG.ad_lret_s, onBooleanClick, {title:LANG.ad_lret_l, modes:FDM}),
-            outputBeltFirst:     UC.newBoolean(LANG.ad_lbir_s, onBooleanClick, {title:LANG.ad_lbir_l, modes:FDM}),
+            outputBeltFirst:     UC.newBoolean(LANG.ad_lbir_s, onBooleanClick, {title:LANG.ad_lbir_l, show: isBelt, modes:FDM}),
             camConventional:     UC.newBoolean(LANG.ou_conv_s, onBooleanClick, {title:LANG.ou_conv_l, modes:CAM}),
             camEaseDown:         UC.newBoolean(LANG.cr_ease_s, onBooleanClick, {title:LANG.cr_ease_l, modes:CAM}),
             camDepthFirst:       UC.newBoolean(LANG.ou_depf_s, onBooleanClick, {title:LANG.ou_depf_l, modes:CAM}),
@@ -1878,6 +1881,15 @@
         UI.settingsSave.onclick = () => {
             settingsSave(undefined, UI.settingsName.value);
         };
+
+        function optSelected(sel) {
+            let opt = sel.options[sel.selectedIndex];
+            return opt ? opt.value : undefined;
+        }
+
+        function fillShow() {
+            return optSelected(UI.sliceFillType) === 'linear';
+        }
 
         function spindleShow() {
             return settings().device.spindleMax > 0;

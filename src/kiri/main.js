@@ -70,6 +70,7 @@
         work_alerts: true, // allow disabling work progress alerts
         hover: false, // when true fires mouse hover events
         hoverAdds: false, // when true only searches widget additions
+        alert_event: false // emit alerts as events instead of display
     };
 
     const selection = {
@@ -559,12 +560,20 @@
              return updateAlerts(true);
          }
          let rec = [message, Date.now(), time, true];
-         alerts.push(rec);
-         updateAlerts();
+         if (feature.alert_event) {
+             API.event.emit('alert', rec);
+         } else {
+             alerts.push(rec);
+             updateAlerts();
+         }
          return rec;
      }
 
      function alert2cancel(rec) {
+         if (feature.alert_event) {
+             API.event.emit('alert.cancel', rec);
+             return;
+         }
          if (Array.isArray(rec)) {
              rec[3] = false;
              updateAlerts();
@@ -944,7 +953,7 @@
         UI.speeds.style.display = 'none';
     }
 
-    function updateSpeeds(maxSpeed) {
+    function updateSpeeds(maxSpeed, minSpeed) {
         UI.speeds.style.display =
             settings.mode !== 'SLA' &&
             settings.mode !== 'LASER' &&
@@ -968,6 +977,7 @@
                 });
                 UI.speedbar.innerHTML = list.join('');
             });
+            API.event.emit('preview.speeds', {min: minSpeed, max: maxSpeed});
         }
     }
 
@@ -1167,7 +1177,7 @@
                 startTime = mark;
             }
             API.show.progress(offset + progress * scale, message);
-        }, function (reply, maxSpeed) {
+        }, function (reply, maxSpeed, minSpeed) {
             // handle worker errors
             if (reply && reply.error) {
                 alert2(reply.error, 5);
@@ -1214,7 +1224,7 @@
             SPACE.update();
             updateSliderMax(true);
             setVisibleLayer(-1, 0);
-            updateSpeeds(maxSpeed);
+            updateSpeeds(maxSpeed, minSpeed);
             updateStackLabelState();
 
             // mark preview complete for export
@@ -1257,13 +1267,13 @@
         setOpacity(0);
         KIRI.client.parse({code, type, settings}, progress => {
             API.show.progress(progress, "parsing");
-        }, (layers, maxSpeed) => {
+        }, (layers, maxSpeed, minSpeed) => {
             API.show.progress(0);
             STACKS.clear();
             const stack = STACKS.create('parse', SPACE.platform.world);
             layers.forEach(layer => stack.add(layer));
             updateSliderMax(true);
-            updateSpeeds(maxSpeed);
+            updateSpeeds(maxSpeed, minSpeed);
             showSlices();
             updateStackLabelState();
             SPACE.update();

@@ -297,10 +297,12 @@
                     sliceShells: 3,
                     sliceShellOrder: "in-out",
                     sliceLayerStart: "last",
+                    sliceLineWidth: 0,
                     sliceFillAngle: 45,
                     sliceFillWidth: 1,
                     sliceFillOverlap: 0.35,
                     sliceFillSparse: 0.25,
+                    sliceFillRepeat: 1,
                     sliceFillRate: 0,
                     sliceFillType: "hex",
                     sliceSupportDensity: 0.25,
@@ -366,7 +368,7 @@
                     zHopDistance: 0.2,
                     arcTolerance: 0,
                     antiBacklash: 1,
-                    gcodePause: "",
+                    gcodePauseLayers: "",
                     ranges: []
                 }
             },
