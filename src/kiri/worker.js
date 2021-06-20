@@ -5,18 +5,78 @@
 let BASE = self.base,
     KIRI = self.kiri,
     UTIL = BASE.util,
+    POLY = BASE.polygons,
     time = UTIL.time,
     qtpi = Math.cos(Math.PI/4),
+    concurrent = self.Worker ? navigator.hardwareConcurrency || 0 : 0,
     current = self.worker = {
         print: null,
         snap: null
     },
     wgroup = {},
-    wcache = {};
+    wcache = {},
+    minions = [],
+    minionq = [];
 
 // catch clipper alerts and convert to console messages
 self.alert = function(o) {
     console.log(o);
+};
+
+// start concurrent workers (minions)
+if (concurrent) {
+    for (let i=0; i < concurrent; i++) {
+        minions.push(new Worker(`/code/minion.js?${self.kiri.version}`));
+    }
+    console.log(`kiri | init mini | ${KIRI.version || "rogue"} | ${concurrent}`);
+}
+
+// for concurrent operations
+const minwork =
+KIRI.minions = {
+    union: function(polys, minarea) {
+        return new Promise((resolve, reject) => {
+            if (concurrent === 0 || polys.length * 2 < concurrent) {
+                resolve(POLY.union(polys, 0, true));
+            }
+            let polyper = Math.ceil(polys.length / concurrent);
+            let running = 0;
+            let union = [];
+            let receiver = function(data) {
+                let polys = KIRI.codec.decode(data.union);
+                union.appendAll(polys);
+                if (--running === 0) {
+                    resolve(POLY.union(union, 0, true));
+                }
+            };
+            for (let i=0; i<polys.length; i += polyper) {
+                running++;
+                minwork.queue({
+                    cmd: "union",
+                    minarea,
+                    polys: KIRI.codec.encode(polys.slice(i, i + polyper))
+                }, receiver);
+            }
+        });
+    },
+
+    queue: function(work, ondone) {
+        minionq.push({work, ondone});
+        minwork.kick();
+    },
+
+    kick: function() {
+        if (minions.length && minionq.length) {
+            let qrec = minionq.shift();
+            let minion = minions.shift();
+            minion.onmessage = (msg) => {
+                minions.push(minion);
+                qrec.ondone(msg.data);
+                minwork.kick();
+            };
+            minion.postMessage(qrec.work);
+        }
+    }
 };
 
 console.log(`kiri | init work | ${KIRI.version || "rogue"}`);
@@ -47,6 +107,7 @@ KIRI.worker = {
         current.print = null;
         dispatch.group = wgroup = {};
         dispatch.cache = wcache = {};
+        KIRI.Widget.Groups.clear();
         send.done({ clear: true });
     },
 
@@ -162,6 +223,8 @@ KIRI.worker = {
     slice: function(data, send) {
         send.data({update:0.001, updateStatus:"slicing"});
 
+        current.print = null;
+
         let settings = data.settings,
             widget = wcache[data.id],
             last = time(),
@@ -249,6 +312,8 @@ KIRI.worker = {
         }, function(done) {
             // SLA workaround
             output = done;
+        }, function(debug) {
+            send.data({debug});
         });
         const { bounds, time, lines, bytes, distance, settings } = current.print;
 

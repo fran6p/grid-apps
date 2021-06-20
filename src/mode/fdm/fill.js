@@ -17,7 +17,7 @@
             gyroid: fillGyroid,
             triangle: fillTriangle,
             linear: fillLinear,
-            bubbles: fillBubbles
+            cubic: fillCubic
         },
         CACHE = self.kiri.fill_fixed = {
             hex: fillHexFull,
@@ -110,18 +110,88 @@
         let tile_z = 1 / tile;
         let gyroid = BASE.gyroid.slice(target.zValue() * tile_z, (1 - density) * 500);
 
-        gyroid.polys.forEach(poly => {
-            for (let tx=0; tx<=tile_x; tx++) {
-                for (let ty=0; ty<=tile_y; ty++) {
+        // gyroid.polys.forEach(poly => {
+        //     for (let tx=0; tx<=tile_x; tx++) {
+        //         for (let ty=0; ty<=tile_y; ty++) {
+        //             target.newline();
+        //             let bx = tx * tile + bounds.min.x;
+        //             let by = ty * tile + bounds.min.y;
+        //             poly.forEach(point => {
+        //                 target.emit(bx + point.x * tile, by + point.y * tile);
+        //             });
+        //         }
+        //     }
+        // });
+
+        let polys = [];
+        for (let tx=0; tx<=tile_x; tx++) {
+            for (let ty=0; ty<=tile_y; ty++) {
+                for (let poly of gyroid.polys) {
                     target.newline();
-                    let bx = tx * tile + bounds.min.x;
-                    let by = ty * tile + bounds.min.y;
-                    poly.forEach(point => {
-                        target.emit(bx + point.x * tile, by + point.y * tile);
+                    let points = poly.map(el => {
+                        return {
+                            x: el.x * tile + tx * tile + bounds.min.x,
+                            y: el.y * tile + ty * tile + bounds.min.y,
+                            z: 0
+                        }
                     });
+                    polys.push(BASE.newPolygon().setOpen(true).addObj(points));
                 }
             }
-        });
+        }
+        polys = connectOpenPolys(polys);
+        for (let poly of polys.filter(p => p.perimeter() > 2)) {
+            target.newline();
+            for (let point of poly.points) {
+                target.emit(point.x, point.y);
+            }
+        }
+    }
+
+    function connectOpenPolys(noff, dist = 0.1) {
+        if (noff.length <= 1) {
+            return noff;
+        }
+        let heal = 0;
+        // heal/rejoin open segments that have close endpoints
+        outer: for(;; heal++) {
+            let ntmp = noff, tlen = ntmp.length;
+            for (let i=0; i<tlen; i++) {
+                let s1 = ntmp[i];
+                if (!s1 || !s1.open) continue;
+                for (let j=i+1; j<tlen; j++) {
+                    let s2 = ntmp[j];
+                    if (!s2 || !s2.open) continue;
+                    if (s1.last().distTo2D(s2.first()) <= dist) {
+                        s1.addPoints(s2.points);
+                        ntmp[j] = null;
+                        continue outer;
+                    }
+                    if (s1.first().distTo2D(s2.last()) <= dist) {
+                        s2.addPoints(s1.points);
+                        ntmp[i] = null;
+                        continue outer;
+                    }
+                    if (s1.first().distTo2D(s2.first()) <= dist) {
+                        s1.reverse();
+                        s1.addPoints(s2.points);
+                        ntmp[j] = null;
+                        continue outer;
+                    }
+                    if (s1.last().distTo2D(s2.last()) <= dist) {
+                        s1.addPoints(s2.points.reverse());
+                        ntmp[j] = null;
+                        continue outer;
+                    }
+                }
+            }
+            break;
+        }
+        if (heal > 0) {
+            // cull nulls
+            noff = noff.filter(o => o);
+        }
+        return noff;
     }
 
     function fillGrid(target) {
@@ -152,30 +222,59 @@
         }
     }
 
-    function fillLinear(target) {
+    function fillCubic(target) {
         let bounds = target.bounds();
-        let height = target.zHeight();
-        let repeat = target.repeat();
-        let density = target.density();
-        let line = target.lineWidth();
-
-        let span_x = bounds.max.x - bounds.min.x;
-        let span_y = bounds.max.y - bounds.min.y;
-        let steps_x = (span_x / line) * density;
-        let steps_y = (span_y / line) * density;
-        let step_x = span_x / steps_x;
-        let step_y = span_x / steps_x;
-
-        let zindex = Math.floor(target.zIndex() / repeat);
-
-        if (zindex % 2 === 1) {
-            for (let tx=bounds.min.x; tx<=bounds.max.x; tx += step_x) {
+        let span = Math.max(
+            bounds.max.x - bounds.min.x,
+            bounds.max.y - bounds.min.y
+        );
+        let steps = Math.floor((span / target.lineWidth()) * target.density());
+        let step = span / steps;
+        let ztype = Math.floor(target.zIndex() / target.repeat()) % 3;
+        if (ztype === 1) {
+            for (let tx=bounds.min.x; tx<=bounds.max.x; tx += step) {
                 target.newline();
                 target.emit(tx, bounds.min.y);
                 target.emit(tx, bounds.max.y);
             }
+        } else if (ztype === 0) {
+            for (let ty=bounds.min.y; ty<=bounds.max.y; ty += step) {
+                target.newline();
+                target.emit(bounds.min.x, ty);
+                target.emit(bounds.max.x, ty);
+            }
         } else {
-            for (let ty=bounds.min.y; ty<=bounds.max.y; ty += step_y) {
+            step *- Math.sqrt(2);
+            for (let tx=bounds.min.x; tx<=bounds.max.x; tx += step) {
+                target.newline();
+                target.emit(tx, bounds.min.y);
+                target.emit(tx + 1000, bounds.max.y + 1000);
+            }
+            for (let ty=bounds.min.y; ty<=bounds.max.y; ty += step) {
+                target.newline();
+                target.emit(bounds.min.x, ty);
+                target.emit(bounds.min.x + 1000, ty + 1000);
+            }
+        }
+    }
+
+    function fillLinear(target) {
+        let bounds = target.bounds();
+        let span = Math.max(
+            bounds.max.x - bounds.min.x,
+            bounds.max.y - bounds.min.y
+        );
+        let steps = Math.floor((span / target.lineWidth()) * target.density());
+        let step = span / steps;
+        let ztype = Math.floor(target.zIndex() / target.repeat()) % 2;
+        if (ztype === 1) {
+            for (let tx=bounds.min.x; tx<=bounds.max.x; tx += step) {
+                target.newline();
+                target.emit(tx, bounds.min.y);
+                target.emit(tx, bounds.max.y);
+            }
+        } else if (ztype === 0) {
+            for (let ty=bounds.min.y; ty<=bounds.max.y; ty += step) {
                 target.newline();
                 target.emit(bounds.min.x, ty);
                 target.emit(bounds.max.x, ty);
@@ -185,13 +284,11 @@
 
     function fillTriangle(target) {
         let bounds = target.bounds();
-        let height = target.zHeight();
         let span_x = bounds.max.x - bounds.min.x;
         let span_y = bounds.max.y - bounds.min.y;
-        let density = target.density();
         let offset = target.offset();
         let line_w = target.lineWidth() / 2;
-        let tile = 1 + (1 - density) * 5;
+        let tile = 1 + (1 - target.density()) * 5;
         let tile_x = tile + offset*2 + line_w;
         let tile_xc = span_x / tile_x;
         let tile_yc = span_y / tile;
@@ -219,43 +316,5 @@
             target.emit(xp, bounds.max.y);
         }
     }
-
-    function fillBubbles(api) {
-        let {min, max} = api.bounds();
-        let slice = api.slice(); // slice object (for adding solids)
-        let height = api.zHeight(); // layer height
-        let offset = api.lineWidth() / 2; // offset size by nozzle width
-        let size = 3 / api.density(); // circle diameter from density
-        let rad = size / 2 - offset; // max circle radius
-        let minr = offset + (2 - api.density() * 2) * offset;
-        let zrep = size / height; // # layers to repeat pattern
-        let zpad = zrep * 0.3; // # pad layers between pattern
-        let bind = api.zIndex() % (zrep + zpad); // index into pattern
-        let brad = bind < zrep ? Math.max(minr,(rad * Math.sin(((bind + 1) / zrep) * Math.PI))) : minr;
-        let sind = (api.zIndex() + (zrep + zpad)/2) % (zrep + zpad); // index into pattern
-        let srad = sind < zrep ? Math.max(minr,(rad * Math.sin(((sind + 1) / (zrep + 0)) * Math.PI))) : minr;
-        for (let x=min.x-size; x<max.x+size; x += size) {
-            let eoy = 0;
-            for (let y=min.y-size; y<max.y+size; y += size) {
-                let xo = (eoy++ % 2 === 0) ? (size / 2) : 0;
-                // primary pattern
-                self.base
-                    .newPolygon()
-                    .centerCircle({x:x+xo, y:y*0.85}, brad, 20, true)
-                    .forEachPoint(p => {
-                        api.emit(p.x, p.y);
-                    }, true);
-                api.newline();
-                // alternate pattern
-                self.base
-                    .newPolygon()
-                    .centerCircle({x:x+xo, y:y*0.85+(size/1.75)}, srad, 20, true)
-                    .forEachPoint(p => {
-                        api.emit(p.x, p.y);
-                    }, true);
-                api.newline();
-            }
-        }
-    };
 
 })();

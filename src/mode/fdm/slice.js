@@ -153,7 +153,8 @@
             union: ctrl.healMesh,
             // debug: true,
             // xray: 3,
-            // view: view
+            // view: view,
+            indices: spro.indices
         }, onSliceDone, onSliceUpdate);
 
         function onSliceUpdate(update) {
@@ -161,6 +162,10 @@
         }
 
         function onSliceDone(slices) {
+            onSliceDoneAsync(slices).then(ondone);
+        }
+
+        async function onSliceDoneAsync(slices) {
             // remove all empty slices above part but leave below
             // for multi-part (multi-extruder) setups where the void is ok
             // also reverse because slicing occurs bottom-up
@@ -258,23 +263,10 @@
                 slice.solids = [];
             });
 
-            // create shadow for clipping supports
-            let shadow = null;
-            if (!isBelt || spro.sliceSupportEnable) {
-                let alltops = slices.map(slice => slice.topPolys()).flat();
-                shadow = POLY.union(alltops,null,0.1);
-                if (spro.sliceSupportExtra) {
-                    shadow = POLY.offset(shadow, spro.sliceSupportExtra);
-                }
-                widget.shadow = shadow;
-                // slices[0].output()
-                //     .setLayer('shadow', { line: 0xff0000, check: 0xff0000 })
-                //     .addPolys(shadow);
-            }
-
+            let promises = ctrl.danger ? [] : undefined;
             // create shells and diff inner fillable areas
-            forSlices(0.0, 0.2, slice => {
-                let params = getRangeParameters(settings, slice.index);
+            forSlices(0.0, 0.15, slice => {
+                let params = slice.params = getRangeParameters(settings, slice.index);
                 let shellFrac = (params.sliceShells - (params.sliceShells | 0));
                 let sliceShells = params.sliceShells | 0;
                 if (ctrl.danger && shellFrac) {
@@ -289,24 +281,39 @@
                 let isBottom = slice.index < spro.sliceBottomLayers;
                 let isTop = slice.index > slices.length - spro.sliceTopLayers-1;
                 let isDense = params.sliceFillSparse > 0.98;
-                let solid = (isBottom || ((isTop || isDense) && !vaseMode)) && !isSynth;
                 let solidWidth = params.sliceFillWidth || 1;
                 let spaceMult = first ? spro.firstLayerLineMult || 1 : 1;
+                if ((isBottom || ((isTop || isDense) && !vaseMode)) && !isSynth) {
+                    slice.solid = {
+                        solidWidth,
+                        spaceMult
+                    };
+                }
                 let offset = shellOffset * spaceMult;
                 let fillOff = fillOffset * spaceMult;
                 let count = isSynth ? 1 : sliceShells;
                 doShells(slice, count, offset, fillOff, {
                     vase: vaseMode,
                     thin: spro.detectThinWalls && !isSynth,
-                    widget: widget,
+                    // widget: widget,
                     danger: ctrl.danger
-                });
-                if (solid) {
-                    let fillSpace = fillSpacing * spaceMult * solidWidth;
+                }, promises);
+            }, "shells");
+
+            if (promises) {
+                await Promise.all(promises);
+                // console.log('resolved', promises.length);
+            }
+
+            // just the top/bottom special solid layers
+            forSlices(0.15, 0.2, slice => {
+                if (slice.solid) {
+                    let fillSpace = fillSpacing * slice.solid.spaceMult * slice.solid.solidWidth;
                     doSolidLayerFill(slice, fillSpace, sliceFillAngle);
                 }
                 sliceFillAngle += 90.0;
-            }, "offsets");
+            }, "shells");
+
             // add lead in when specified in belt mode
             if (!isSynth && isBelt) {
                 // find adjusted zero point from slices
@@ -333,7 +340,7 @@
                 let minx = Infinity, maxx = -Infinity;
                 let peek = 0;
                 for (let slice of slices) {
-                    if (slice.groups.length && peek++ < 5) {
+                    if (slice.tops.length && peek++ < 5) {
                         for (let poly of slice.topPolys()) {
                             minx = Math.min(minx, poly.bounds.minx);
                             maxx = Math.max(maxx, poly.bounds.maxx);
@@ -365,8 +372,9 @@
                         addto.up = start;
                         start.down = addto;
                         slices.splice(0,0,addto);
-                    // } else {
-                    //     console.log({add_to_existing_slice: addto});
+                    } else if (!addto.belt) {
+                        console.log({addto_missing_belt: addto});
+                        addto.belt = {};
                     }
                     addto.index = -1;
                     addto.belt.anchor = true;
@@ -472,6 +480,26 @@
 
             // auto support generation
             if (!isBelt && !isSynth && supportDensity && spro.sliceSupportEnable) {
+                // create shadow for clipping supports
+                let shadow = null;
+                let alltops = slices.map(slice => slice.topPolys()).flat();
+                let alllen = alltops.map(p => p.deepLength).reduce((a,v)=>a+v);
+                if (alllen > 100000) {
+                    // console.log({alllen});
+                    alltops = alltops.map(p => p.clean(true, undefined, 5000));
+                    // console.log({reduced: alltops.map(p => p.deepLength).reduce((a,v)=>a+v)});
+                }
+                let mark = Date.now();
+                // shadow = POLY.union(alltops, 0.1, true);
+                shadow = await KIRI.minions.union(alltops, 0.1);
+                console.log({unioned_in: Date.now() - mark});
+                if (spro.sliceSupportExtra) {
+                    shadow = POLY.offset(shadow, spro.sliceSupportExtra);
+                }
+                widget.shadow = shadow;
+                // slices[0].output()
+                //     .setLayer('shadow', { line: 0xff0000, check: 0xff0000 })
+                //     .addPolys(shadow);
                 forSlices(0.7, 0.8, slice => {
                     doSupport(slice, spro, shadow);
                 }, "support");
@@ -496,9 +524,6 @@
                 widget.belt.miny = -bounds.miny;
                 widget.belt.midy = (bounds.miny + bounds.maxy) / 2;
             }
-
-            // report slicing complete
-            ondone();
         }
 
     }
@@ -576,6 +601,7 @@
     // shared with SLA driver
     FDM.share = {
         doShells,
+        doTopShells,
         doDiff,
         projectFlats,
         projectBridges,
@@ -594,140 +620,162 @@
      * @param {number} fillOffset
      * @param {Obejct} options
      */
-    function doShells(slice, count, offsetN, fillOffset, opt = {}) {
+    function doShells(slice, count, offsetN, fillOffset, opt = {}, promises) {
         let offset1 = offsetN / 2;
-        let shellout = 0;
 
-        slice.tops.forEach(function(top) {
-            let top_poly = [ top.poly ];
+        if (slice.index === 0) {
+            // console.log({slice_top_0: top_poly, count});
+            // segment polygon
+        }
 
-            if (slice.index === 0) {
-                // console.log({slice_top_0: top_poly, count});
-                // segment polygon
+        if (promises) {
+            let oldtops = slice.tops;
+            let newtops = slice.tops = [];
+            oldtops.old = true;
+            for (let top of oldtops) {
+                promises.push(
+                    new Promise((resolve, reject) => {
+                        KIRI.minions.queue({
+                            cmd: "top.shells",
+                            z: slice.z, count, offset1, offsetN, fillOffset, opt,
+                            top: KIRI.codec.encode(top, {full: true})
+                        }, data => {
+                            let top = KIRI.codec.decode(data.top, {full: true});
+                            newtops.push(top);
+                            resolve();
+                        });
+                    })
+                );
             }
-
-            if (opt.vase) {
-                // remove top poly inners in vase mode
-                top.poly = top.poly.clone(false);
+            newtops.new = true;
+        } else {
+            for (let top of slice.tops) {
+                doTopShells(slice.z, top, count, offset1, offsetN, fillOffset, opt);
             }
+        }
+    }
 
-            top.shells = [];
-            top.fill_off = [];
-            top.fill_lines = [];
+    function doTopShells(z, top, count, offset1, offsetN, fillOffset, opt = {}) {
+        let top_poly = [ top.poly ];
 
-            let last = [],
-                gaps = [],
-                z = top.poly.getZ();
+        if (opt.vase) {
+            // remove top poly inners in vase mode
+            top.poly = top.poly.clone(false);
+        }
 
-            if (count) {
-                // permit offset of 0 for laser and drag knife
-                if (offset1 === 0 && count === 1) {
-                    last = top_poly.clone(true);
-                    top.shells = last;
-                } else {
-                    // heal top open polygons if the ends are close (benchy tilt test)
-                    top_poly.forEach(p => { if (p.open) {
-                        let dist = p.first().distTo2D(p.last());
-                        if (dist < 1) p.open = false;
-                    } });
-                    if (opt.danger && opt.thin) {
-                        top.thin_fill = [];
-                        top.fill_sparse = [];
-                        let layers = POLY.inset(top_poly, offsetN, count, z);
-                        last = layers.last().mid;
-                        top.shells = layers.map(r => r.mid).flat();
-                        top.gaps = layers.map(r => r.gap).flat();
-                        let off = offsetN;
-                        let min = off * 0.75;
-                        let max = off * 4;
-                        for (let poly of layers.map(r => r.gap).flat()) {
-                            let centers = poly.centers(off/2, z, min, max, {lines:false});
-                            top.fill_sparse.appendAll(centers);
-                            // top.fill_lines.appendAll(centers);
-                        }
-                    } else if (opt.thin) {
-                        top.thin_fill = [];
-                        let oso = {z, count, gaps: [], outs: [], minArea: 0.05};
-                        POLY.offset(top_poly, [-offset1, -offsetN], oso);
+        top.shells = [];
+        top.fill_off = [];
+        top.fill_lines = [];
 
-                        oso.outs.forEach((polys, i) => {
-                            polys.forEach(p => {
-                                p.depth = i;
-                                if (p.fill_off) {
-                                    p.fill_off.forEach(pi => pi.depth = i);
+        let last = [],
+            gaps = [];
+
+        if (count) {
+            // permit offset of 0 for laser and drag knife
+            if (offset1 === 0 && count === 1) {
+                last = top_poly.clone(true);
+                top.shells = last;
+            } else {
+                // heal top open polygons if the ends are close (benchy tilt test)
+                top_poly.forEach(p => { if (p.open) {
+                    let dist = p.first().distTo2D(p.last());
+                    if (dist < 1) p.open = false;
+                } });
+                if (opt.danger && opt.thin) {
+                    top.thin_fill = [];
+                    top.fill_sparse = [];
+                    let layers = POLY.inset(top_poly, offsetN, count, z);
+                    last = layers.last().mid;
+                    top.shells = layers.map(r => r.mid).flat();
+                    top.gaps = layers.map(r => r.gap).flat();
+                    let off = offsetN;
+                    let min = off * 0.75;
+                    let max = off * 4;
+                    for (let poly of layers.map(r => r.gap).flat()) {
+                        let centers = poly.centers(off/2, z, min, max, {lines:false});
+                        top.fill_sparse.appendAll(centers);
+                        // top.fill_lines.appendAll(centers);
+                    }
+                } else if (opt.thin) {
+                    top.thin_fill = [];
+                    let oso = {z, count, gaps: [], outs: [], minArea: 0.05};
+                    POLY.offset(top_poly, [-offset1, -offsetN], oso);
+
+                    oso.outs.forEach((polys, i) => {
+                        polys.forEach(p => {
+                            p.depth = i;
+                            if (p.fill_off) {
+                                p.fill_off.forEach(pi => pi.depth = i);
+                            }
+                            if (p.inner) {
+                                for (let pi of p.inner) {
+                                    pi.depth = p.depth;
                                 }
+                            }
+                            top.shells.push(p);
+                        });
+                        last = polys;
+                    });
+
+                    // slice.solids.trimmed = slice.solids.trimmed || [];
+                    oso.gaps.forEach((polys, i) => {
+                        let off = (i == 0 ? offset1 : offsetN);
+                        polys = POLY.offset(polys, -off * 0.8, {z, minArea: 0});
+                        top.thin_fill.appendAll(cullIntersections(
+                            fillArea(polys, 45, off/2, [], 0.01, off*2),
+                            fillArea(polys, 135, off/2, [], 0.01, off*2),
+                        ));
+                        gaps = polys;
+                    });
+                } else {
+                    // standard wall offsetting strategy
+                    POLY.expand(
+                        top_poly,   // reference polygon(s)
+                        -offset1,   // first inset distance
+                        z,          // set new polys to this z
+                        top.shells, // accumulator array
+                        count,      // number of insets to perform
+                        -offsetN,   // subsequent inset distance
+                        // on each new offset trace ...
+                        function(polys, countNow) {
+                            last = polys;
+                            // mark each poly with depth (offset #) starting at 0
+                            polys.forEach(function(p) {
+                                p.depth = count - countNow;
+                                if (p.fill_off) p.fill_off.forEach(function(pi) {
+                                    // use negative offset for inners
+                                    pi.depth = -(count - countNow);
+                                });
                                 if (p.inner) {
                                     for (let pi of p.inner) {
                                         pi.depth = p.depth;
                                     }
                                 }
-                                top.shells.push(p);
                             });
-                            last = polys;
                         });
-
-                        // slice.solids.trimmed = slice.solids.trimmed || [];
-                        oso.gaps.forEach((polys, i) => {
-                            let off = (i == 0 ? offset1 : offsetN);
-                            polys = POLY.offset(polys, -off * 0.8, {z, minArea: 0});
-                            top.thin_fill.appendAll(cullIntersections(
-                                fillArea(polys, 45, off/2, [], 0.01, off*2),
-                                fillArea(polys, 135, off/2, [], 0.01, off*2),
-                            ));
-                            gaps = polys;
-                        });
-                    } else {
-                        // standard wall offsetting strategy
-                        POLY.expand(
-                            top_poly,   // reference polygon(s)
-                            -offset1,   // first inset distance
-                            z,          // set new polys to this z
-                            top.shells, // accumulator array
-                            count,      // number of insets to perform
-                            -offsetN,   // subsequent inset distance
-                            // on each new offset trace ...
-                            function(polys, countNow) {
-                                last = polys;
-                                // mark each poly with depth (offset #) starting at 0
-                                polys.forEach(function(p) {
-                                    p.depth = count - countNow;
-                                    if (p.fill_off) p.fill_off.forEach(function(pi) {
-                                        // use negative offset for inners
-                                        pi.depth = -(count - countNow);
-                                    });
-                                    if (p.inner) {
-                                        for (let pi of p.inner) {
-                                            pi.depth = p.depth;
-                                        }
-                                    }
-                                });
-                            });
-                    }
                 }
-            } else {
-                // no shells, just infill, is permitted
-                last = [top.poly];
             }
+        } else {
+            // no shells, just infill, is permitted
+            last = [top.poly];
+        }
 
-            // generate fill offset poly set from last offset to top.fill_off
-            if (fillOffset && last.length > 0) {
-                // if gaps present, remove that area from fill inset
-                if (gaps.length) {
-                    let nulast = [];
-                    POLY.subtract(last, gaps, nulast, null, slice.z);
-                    last = nulast;
-                }
-                last.forEach(function(inner) {
-                    POLY.offset([inner], -fillOffset, {outs: top.fill_off, flat: true, z: slice.z});
-                });
+        // generate fill offset poly set from last offset to top.fill_off
+        if (fillOffset && last.length > 0) {
+            // if gaps present, remove that area from fill inset
+            if (gaps.length) {
+                let nulast = [];
+                POLY.subtract(last, gaps, nulast, null, z);
+                last = nulast;
             }
+            last.forEach(function(inner) {
+                POLY.offset([inner], -fillOffset, {outs: top.fill_off, flat: true, z});
+            });
+        }
 
-            // for diffing
-            top.last = last;
-
-            shellout += top.shells.length;
-        });
-    };
+        // for diffing
+        top.last = last;
+    }
 
     /**
      * Create an entirely solid layer by filling all top polygons
@@ -801,7 +849,7 @@
                     if (isNaN(x)) {
                         solids.push(x);
                     } else {
-                        line.push(newPoint(x,y,slice.z));
+                        line.push(newPoint(x, y, slice.z));
                         slice.isSparseFill = true;
                     }
                 },
@@ -902,6 +950,7 @@
             return;
         }
 
+        lines = lines.map(a => a.map(p => p.toClipper()));
         clip.AddPaths(lines, ptyp.ptSubject, false);
         clip.AddPaths(POLY.toClipper(polys), ptyp.ptClip, true);
 
@@ -1331,7 +1380,9 @@
         let isBelt = settings.device.bedBelt;
         let process = settings.process;
         let size = process.sliceSupportSize;
-        let min = process.sliceSupportArea || 1;
+        let s4 = size / 4;
+        let s2 = size * 0.45;
+        let min = 0.01;
         let geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(widget.vertices, 3));
         let mat = new THREE.MeshBasicMaterial();
@@ -1345,76 +1396,198 @@
         let platform = new THREE.Mesh(
             new THREE.PlaneGeometry(1000,1000,1), mat
         );
-        function tl(p1, p2) {
-            let dist = p1.distanceTo(p2);
-            let mp = new THREE.Vector3().add(p1).add(p2).divideScalar(2);
-            if (dist >= size * 3) {
-                tp(p1);
-                tp(p2);
-                let itr = Math.floor(dist / size);
-                let seg = p2.clone().sub(p1).divideScalar(itr);
-                let pnt = p1.clone();
-                while (itr-- > 0) {
-                    pnt.add(seg);
-                    tp(pnt.clone());
+        function pointIn(x, y, p1, p2, p3) {
+            let det = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+            return det * ((p2.x - p1.x) * (y - p1.y) - (p2.y - p1.y) * (x - p1.x)) > 0 &&
+                det * ((p3.x - p2.x) * (y - p2.y) - (p3.y - p2.y) * (x - p2.x)) > 0 &&
+                det * ((p1.x - p3.x) * (y - p3.y) - (p1.y - p3.y) * (x - p3.x)) > 0
+        }
+        // first, last, distance
+        function fld(arr, key) {
+            let first = arr[0];
+            let last = arr.last();
+            let dist = last[key] - first[key];
+            return { first, last, dist }
+        }
+        // sorted range distance from key
+        function rdist(range, key) {
+            return range.last[key] - range.first[key];
+        }
+        // test area
+        function ta(p1, p2, p3) {
+            let sortx = [p1,p2,p3].sort((a,b) => { return a.x - b.x });
+            let sorty = [p1,p2,p3].sort((a,b) => { return a.y - b.y });
+            let sortz = [p1,p2,p3].sort((a,b) => { return a.z - b.z });
+            let xv = fld(sortx, 'x');
+            let yv = fld(sorty, 'y');
+            let xa = BASE.util.lerp(xv.first.x + s4, xv.last.x - s4, s2, true);
+            let ya = BASE.util.lerp(yv.first.y + s4, yv.last.y - s4, s2, true);
+            for (let x of xa) {
+                for (let y of ya) {
+                    if (pointIn(x, y, p1, p2, p3)) {
+                        let z = BASE.util.zInPlane(p1, p2, p3, x, y);
+                        tp(new THREE.Vector3(x, y, z));
+                    }
                 }
-            } else if (dist >= size * 2) {
-                tp(p1);
-                tp(p2);
-                tp(mp);
-            } else if (dist >= size) {
-                tp(p1);
-                tp(p2);
             }
         }
+        // test poly
+        function tP(poly, face) {
+            let bounds = poly.bounds;
+            let xa = BASE.util.lerp(bounds.minx + s4, bounds.maxx - s4, s2, true);
+            let ya = BASE.util.lerp(bounds.miny + s4, bounds.maxy - s4, s2, true);
+            for (let x of xa) {
+                for (let y of ya) {
+                    if (BASE.newPoint(x, y, 0).isInPolygon(poly)) {
+                        let z = BASE.util.zInPlane(face[0], face[1], face[2], x, y);
+                        tp(new THREE.Vector3(x, y, z));
+                    }
+                }
+            }
+        }
+        // test point
         function tp(point) {
             if (point.added) {
                 return;
             }
+            // omit pillars close to existing pillars
             for (let added of add) {
                 let p2 = new THREE.Vector2(point.x, point.y);
                 let pm = new THREE.Vector2(added.mid.x, added.mid.y);
-                if (p2.distanceTo(pm) < 1) {
+                if (Math.abs(point.z - added.from.z) < s2 && p2.distanceTo(pm) < s4) {
                     return;
                 }
             }
             let ray = new THREE.Raycaster(point, dir);
             let int = ray.intersectObjects([ mesh, platform ], false);
-            if (int && int.length && int[0].distance > 0.01) {
+            if (int && int.length && int[0].distance > 0.5) {
                 let mid = new THREE.Vector3().add(point).add(int[0].point).divideScalar(2);
                 add.push({from: point, to: int[0].point, mid});
                 point.added = true;
             }
         }
         let filter = isBelt ? (norm) => {
-            return norm.z < thresh && norm.y < -0.001;
+            return norm.z <= thresh && norm.y < 0;
         } : (norm) => {
             return norm.z < thresh;
         };
         let { position } = geo.attributes;
         let { itemSize, count, array } = position;
+        let v3cache = new Vector3Cache();
+        let coplane = new Coplanars();
         for (let i = 0; i<count; i += 3) {
             let ip = i * itemSize;
-            let a = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
-            let b = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
-            let c = new THREE.Vector3(array[ip++], array[ip++], array[ip++]);
+            let a = v3cache.get(array[ip++], array[ip++], array[ip++]);
+            let b = v3cache.get(array[ip++], array[ip++], array[ip++]);
+            let c = v3cache.get(array[ip++], array[ip++], array[ip++]);
             let norm = THREE.computeFaceNormal(a,b,c);
             // limit to downward faces
             if (!filter(norm)) {
                 continue;
             }
             // skip tiny faces
-            let area = BASE.newPolygon().addPoints([a,b,c]).area();
-            if (BASE.newPolygon().addPoints([a,b,c]).area() < min) {
+            let poly = BASE.newPolygon().addPoints([a,b,c].map(v => BASE.newPoint(v.x, v.y, v.z)));
+            if (poly.area() < min && poly.perimeter() < size) {
                 continue;
             }
-            tp(new THREE.Vector3().add(a).add(b).add(c).divideScalar(3));
-            tl(a,b);
-            tl(b,c);
-            tl(a,c);
+            // skip faces on bed
+            if (a.z + b.z + c.z < 0.01) {
+                continue;
+            }
+            // match with other attached, coplanar faces
+            coplane.put(a, b, c, norm.z);
+        }
+        let groups = coplane.group(true);
+        // console.log({v3cache, coplane, groups});
+        for (let group of Object.values(groups)) {
+            for (let polys of group) {
+                for (let poly of polys) {
+                    if (poly.area() >= process.sliceSupportArea)
+                    tP(poly, polys.face);
+                }
+            }
         }
         widget.supports = add;
         return add.length > 0;
     };
+
+    class Vector3Cache {
+        constructor() {
+            this.cache = {};
+        }
+
+        get(x, y, z) {
+            let key = [x.round(4),y.round(4),z.round(4)].join(',');
+            let val = this.cache[key];
+            if (!val) {
+                val = new THREE.Vector3(x, y, z);
+                this.cache[key] = val;
+            }
+            return val;
+        }
+    }
+
+    class Coplanars {
+        constructor() {
+            this.cache = {};
+        }
+
+        put(a, b, c, norm) {
+            let key = norm.round(7).toString();
+            let arr = this.cache[key];
+            if (!arr) {
+                arr = [];
+                this.cache[key] = arr;
+            }
+            arr.push([a,b,c]);
+        }
+
+        group(union) {
+            let out = {};
+            for (let norm in this.cache) {
+                let arr = this.cache[norm];
+                let groups = [];
+                for (let face of arr) {
+                    let match = undefined;
+                    // see if face matches vertices in any group
+                    outer: for (let group of groups) {
+                        for (let el of group) {
+                            if (
+                                el.indexOf(face[0]) >= 0 ||
+                                el.indexOf(face[1]) >= 0 ||
+                                el.indexOf(face[2]) >= 0
+                            ) {
+                                match = group;
+                                break outer;
+                            }
+                        }
+                    }
+                    if (match) {
+                        match.push(face);
+                    } else {
+                        groups.push([face]);
+                    }
+                }
+                if (union) {
+                    // convert groups of faces to contiguous polygon groups
+                    groups = groups.map(group => {
+                        let parr = group.map(arr => {
+                            return BASE.newPolygon()
+                                .add(arr[0].x, arr[0].y, arr[0].z)
+                                .add(arr[1].x, arr[1].y, arr[1].z)
+                                .add(arr[2].x, arr[2].y, arr[2].z);
+                        });
+                        let union = POLY.union(parr, 0, true);
+                        union.merged = parr.length;
+                        union.face = group[0];
+                        return union;
+                    });
+                }
+                out[norm] = groups;
+            }
+            // console.log(out);
+            return out;
+        }
+    }
 
 })();

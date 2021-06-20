@@ -146,13 +146,13 @@
             { name: "origin" },
         ],
         infill: [
-            { name: "vase" },
             { name: "hex" },
             { name: "grid" },
-            { name: "gyroid" },
-            { name: "triangle" },
+            // { name: "cubic" },
             { name: "linear" },
-            { name: "bubbles" }
+            { name: "triangle" },
+            { name: "gyroid" },
+            { name: "vase" }
         ],
         units: [
             { name: "mm" },
@@ -2872,7 +2872,7 @@
                 complete = {};
                 UI.back.style.display = '';
                 UI.render.style.display = '';
-                // KIRI.work.clear();
+                KIRI.client.clear();
                 STACKS.clear();
                 hideSlider();
                 updateSpeeds();
