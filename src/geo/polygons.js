@@ -29,6 +29,7 @@
         trimTo,
         expand,
         expand_lines,
+        points,
         route,
         union,
         inset,
@@ -78,11 +79,11 @@
             polys = tops || [],
             min = numOrDefault(minarea, 0.1);
 
-        tnode.m_Childs.forEach(function(child) {
+        for (let child of tnode.m_Childs) {
             poly = fromClipperNode(child, z);
             // throw out all tiny polygons
             if (!poly.open && poly.area() < min) {
-                return;
+                continue;
             }
             if (parent) {
                 parent.addInner(poly);
@@ -92,7 +93,7 @@
             if (child.m_Childs) {
                 fromClipperTree(child, z, polys, parent ? null : poly, minarea);
             }
-        });
+        }
 
         return polys;
     };
@@ -100,10 +101,10 @@
     function fromClipperTreeUnion(tnode, z, minarea, tops, parent) {
         let polys = tops || [], poly;
 
-        tnode.m_Childs.forEach(function(child) {
+        for (let child of tnode.m_Childs) {
             poly = fromClipperNode(child, z);
             if (!poly.open && minarea && poly.area() < minarea) {
-                return;
+                continue;
             }
             if (parent) {
                 parent.addInner(poly);
@@ -113,7 +114,7 @@
             if (child.m_Childs) {
                 fromClipperTreeUnion(child, z, minarea, polys, parent ? null : poly);
             }
-        });
+        }
 
         return polys;
     };
@@ -122,16 +123,17 @@
         let clib = self.ClipperLib,
             clip = clib.Clipper;
 
-        if (tree.m_Childs) tree.m_Childs.forEach(function(child) {
+        if (tree.m_Childs)
+        for (let child of tree.m_Childs) {
             child.m_polygon = clip.CleanPolygon(child.m_polygon, CONF.clipperClean);
             cleanClipperTree(child.m_Childs);
-        });
+        }
 
         return tree;
     };
 
     function filter(array, output, fn) {
-        array.forEach(function(poly) {
+        for (let poly of array) {
             poly = fn(poly);
             if (poly) {
                 if (Array.isArray(poly)) {
@@ -140,8 +142,12 @@
                     output.push(poly);
                 }
             }
-        });
+        }
         return output;
+    }
+
+    function points(polys) {
+        return polys.length ? polys.map(p => p.deepLength).reduce((a,v) => a+v) : 0;
     }
 
     /**
@@ -286,53 +292,74 @@
      * @param {number} [minArea]
      * @returns {Polygon[]} out
      */
-    function subtract(setA, setB, outA, outB, z, minArea) {
-        let clib = self.ClipperLib,
-            ctyp = clib.ClipType,
-            ptyp = clib.PolyType,
-            cfil = clib.PolyFillType,
-            clip = new clib.Clipper(),
-            ctre = new clib.PolyTree(),
-            sp1 = toClipper(setA),
-            sp2 = toClipper(setB),
-            min = minArea || 0.1,
+    function subtract(setA, setB, outA, outB, z, minArea, opt = {}) {
+        let min = minArea || 0.1,
             out = [];
 
-        function filter(from, to) {
+        function filter(from, to = []) {
             from.forEach(function(poly) {
                 if (poly.area() >= min) {
                     to.push(poly);
                     out.push(poly);
                 }
             });
+            return to;
         }
 
-        // expensive but worth it?
-        clip.StrictlySimple = true;
-
-        if (outA) {
-            clip.AddPaths(sp1, ptyp.ptSubject, true);
-            clip.AddPaths(sp2, ptyp.ptClip, true);
-
-            if (clip.Execute(ctyp.ctDifference, ctre, cfil.pftEvenOdd, cfil.pftEvenOdd)) {
-                cleanClipperTree(ctre);
-                filter(fromClipperTree(ctre, z, null, null, min), outA);
+        if (opt.prof) {
+            if (setA.length === 0 || setB.length === 0) {
+                console.log('sub_zero', {setA, setB});
             }
+            opt.prof.pin = (opt.prof.pin || 0) + points(setA) + points(setB);
+            opt.prof.call = (opt.prof.call || 0) + 1;
         }
 
-        if (outB) {
+        if (opt.wasm) {
+            let oA = outA ? [] : undefined;
+            let oB = outB ? [] : undefined;
+            geo.wasm.js.diff(setA, setB, z, oA, oB);
+            if (oA) {
+                outA.appendAll(filter(oA));
+            }
+            if (oB) {
+                outB.appendAll(filter(oB));
+            }
+        } else {
+            let clib = self.ClipperLib,
+                ctyp = clib.ClipType,
+                ptyp = clib.PolyType,
+                cfil = clib.PolyFillType,
+                clip = new clib.Clipper(),
+                ctre = new clib.PolyTree(),
+                sp1 = toClipper(setA),
+                sp2 = toClipper(setB);
+
+            // more expensive? worth it?
+            clip.StrictlySimple = true;
             if (outA) {
-                ctre.Clear();
-                clip.Clear();
+                clip.AddPaths(sp1, ptyp.ptSubject, true);
+                clip.AddPaths(sp2, ptyp.ptClip, true);
+                if (clip.Execute(ctyp.ctDifference, ctre, cfil.pftEvenOdd, cfil.pftEvenOdd)) {
+                    cleanClipperTree(ctre);
+                    filter(fromClipperTree(ctre, z, null, null, min), outA);
+                }
             }
-
-            clip.AddPaths(sp2, ptyp.ptSubject, true);
-            clip.AddPaths(sp1, ptyp.ptClip, true);
-
-            if (clip.Execute(ctyp.ctDifference, ctre, cfil.pftEvenOdd, cfil.pftEvenOdd)) {
-                cleanClipperTree(ctre);
-                filter(fromClipperTree(ctre, z, null, null, min), outB);
+            if (outB) {
+                if (outA) {
+                    ctre.Clear();
+                    clip.Clear();
+                }
+                clip.AddPaths(sp2, ptyp.ptSubject, true);
+                clip.AddPaths(sp1, ptyp.ptClip, true);
+                if (clip.Execute(ctyp.ctDifference, ctre, cfil.pftEvenOdd, cfil.pftEvenOdd)) {
+                    cleanClipperTree(ctre);
+                    filter(fromClipperTree(ctre, z, null, null, min), outB);
+                }
             }
+        }
+
+        if (opt.prof) {
+            opt.prof.pout = (opt.prof.pout || 0) + points(out);
         }
 
         return out;
@@ -341,6 +368,11 @@
     /**
      * Slice.doProjectedFills()
      * Print.init w/ brims
+     *
+     * clipper is natively less efficient at merging many polygons. this iterative
+     * approach skips attempting to merge polys lacking overlapping bounding boxes
+     * and can quickly check if the attempt to union two polys outputs the same
+     * two input polys. the latter bit is the key to greater speed.
      *
      * @param {Polygon[]} polys
      * @returns {Polygon[]}
@@ -474,11 +506,11 @@
 
         // cause inner / outer polys to be reversed from each other
         alignWindings(polys);
-        polys.forEach(function(poly) {
+        for (let poly of polys) {
             if (poly.inner) {
                 setWinding(poly.inner, !poly.isClockwise());
             }
-        });
+        }
 
         let orig = polys,
             count = numOrDefault(opts.count, 1),
@@ -496,13 +528,13 @@
             zed = opts.z || 0;
 
         // setup offset
-        polys.forEach(function(poly) {
+        for (let poly of polys) {
             // convert to clipper format
             poly = poly.toClipper();
             if (clean) poly = ClipperLib.Clipper.CleanPolygons(poly, CONF.clipperClean);
             if (simple) poly = ClipperLib.Clipper.SimplifyPolygons(poly, fill);
             coff.AddPaths(poly, join, type);
-        });
+        }
         // perform offset
         coff.Execute(ctre, offs * CONF.clipper);
         // convert back from clipper output format
@@ -614,7 +646,9 @@
         );
 
         // compute union of top boundaries
-        while (i < polys.length) bounds.merge(polys[i++].bounds);
+        while (i < polys.length) {
+            bounds.merge(polys[i++].bounds);
+        }
 
         // ray stepping is an axis from the line perpendicular to the ray
         let rayint = output || [],
@@ -659,7 +693,7 @@
         lines = [];
 
         if (clip.Execute(ctyp.ctIntersection, ctre, cfil.pftNonZero, cfil.pftEvenOdd)) {
-            ctre.m_AllPolys.forEach(function(poly) {
+            for (let poly of ctre.m_AllPolys) {
                 if (minlen || maxlen) {
                     let plen = clib.JS.PerimeterOfPath(poly.m_polygon, false, 1);
                     if (minlen && plen < minlen) return;
@@ -669,20 +703,20 @@
                 let p2 = BASE.pointFromClipper(poly.m_polygon[1], zpos);
                 let od = rayint.origin.distToLineNew(p1,p2) / spacing;
                 lines.push([p1, p2, od]);
-            });
+            }
         }
 
         lines.sort(function(a,b) {
             return a[2] - b[2];
         })
 
-        lines.forEach(function(line) {
+        for (let line of lines) {
             let dist = Math.round(line[2]);
             line[0].index = dist;
             line[1].index = dist;
             rayint.push(line[0]);
             rayint.push(line[1]);
-        })
+        }
 
         return rayint;
     }

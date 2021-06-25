@@ -106,6 +106,10 @@
         return this.tops.map(top => top.poly);
     };
 
+    PRO.topSimples = function() {
+        return this.tops.map(top => top.simple);
+    };
+
     // FDM top intersect optimization
     PRO.topPolysFlat = function() {
         if (this.topFlatPolys) {
@@ -176,9 +180,24 @@
     }
 
     PRO.addTop = function(poly) {
-        let top = new Top(poly);
-        this.tops.push(top);
-        return top;
+        if (poly.length) {
+            // standard legacy polygon
+            let top = new Top(poly);
+            this.tops.push(top);
+            return top;
+        } else {
+            // frop top object passed back by slicePost()
+            let top = new Top(poly.poly);
+            top.fill_lines = poly.fill_lines;
+            top.fill_off = poly.fill_off;
+            top.last = poly.last;
+            top.shells = poly.shells;
+            top.simple = poly.simple;
+            this.tops.push(top);
+            return top;
+        }
+        console.log('top', poly);
+        throw "invalid top";
     };
 
     PRO.findClosestPointTo = function(target) {

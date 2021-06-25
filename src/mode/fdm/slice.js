@@ -15,6 +15,7 @@
         fillArea = POLY.fillArea,
         newPoint = BASE.newPoint,
         newSlice = KIRI.newSlice,
+        tracker = UTIL.pwait,
         FILL = KIRI.fill,
         FILLFIXED = KIRI.fill_fixed,
         COLOR = {
@@ -27,11 +28,23 @@
         PROTO = Object.clone(COLOR),
         bwcomp = (1 / Math.cos(Math.PI/4)),
         getRangeParameters = FDM.getRangeParameters,
+        noop = function() {},
+        profile = false,
+        profileStart = profile ? console.profile : noop,
+        profileEnd = profile ? console.profileEnd : noop,
         debug = false;
 
-    let isThin = false; // force line rendering
-    let isFlat = false; // force flat rendering
-    let offset = 0; // poly line generation offsets
+    let isThin = false, // force line rendering
+        isFlat = false, // force flat rendering
+        offset = 0;     // poly line generation offsets
+
+    let lastLogTime = 0;
+
+    function timelog() {
+        let now = Date.now();
+        console.log(now - (lastLogTime || now), ...arguments);
+        lastLogTime = now;
+    }
 
     function vopt(opt) {
         if (opt) {
@@ -44,6 +57,47 @@
         }
         return opt;
     }
+
+    /**
+     * may run in minion or worker context. do not create objects
+     * that will not quickly encode in threaded mode. add to existing
+     * data object. return is ignored.
+     */
+    FDM.slicePost = function(data, options, params) {
+        let { lines, groups, tops } = data;
+        let { z, index, total, height, thick } = params;
+        let { process, isSynth, isDanger, vaseMode, shellOffset, fillOffset } = options.post;
+        let range = getRangeParameters(process, index);
+        // calculate fractional shells
+        let shellFrac = (range.sliceShells - (range.sliceShells | 0));
+        let sliceShells = range.sliceShells | 0;
+        if (shellFrac) {
+            let v1 = shellFrac > 0.5 ? 1 - shellFrac : shellFrac;
+            let v2 = 1 - v1;
+            let parts = Math.round(v2/v1) + 1;
+            let rem = index % parts;
+            let trg = shellFrac > 0.5 ? 1 : parts - 1;
+            sliceShells += rem >= trg ? 1 : 0;
+        }
+        let spaceMult = index === 0 ? process.firstLayerLineMult || 1 : 1;
+        let count = isSynth ? 1 : sliceShells;
+        let offset =  shellOffset * spaceMult;
+        let fillOff = fillOffset * spaceMult;
+        let nutops = [];
+        // co-locate shell processing with top generation in slicer
+        for (let top of tops) {
+            nutops.push(FDM.share.doTopShells(z, top, count, offset/2, offset, fillOff, {
+                vase: vaseMode,
+                thin: process.detectThinWalls && !isSynth,
+                danger: isDanger
+            }));
+        }
+        // add simple (low rez poly) where less accuracy is OK
+        for (let top of nutops) {
+            top.simple = top.poly.clean(true, undefined, CONF.clipper / 10);
+        }
+        data.tops = nutops;
+    };
 
     /**
      * DRIVER SLICE CONTRACT
@@ -61,31 +115,31 @@
     FDM.slice = function(settings, widget, onupdate, ondone) {
         FDM.fixExtruders(settings);
         let render = settings.render !== false,
-            ctrl = settings.controller,
-            spro = settings.process,
-            sdev = settings.device,
-            isBelt = sdev.bedBelt,
+            { process, device, controller } = settings,
+            isBelt = device.bedBelt,
             isSynth = widget.track.synth,
-            minSolid = spro.sliceSolidMinArea,
-            solidLayers = spro.sliceSolidLayers,
-            vaseMode = spro.sliceFillType === 'vase' && !isSynth,
-            doSolidLayers = solidLayers && !vaseMode && !isSynth,
+            isDanger = controller.danger,
+            isConcurrent = controller.threaded && KIRI.minions.concurrent,
+            solidMinArea = process.sliceSolidMinArea,
+            solidLayers = process.sliceSolidLayers || 0,
+            vaseMode = process.sliceFillType === 'vase' && !isSynth,
             metadata = settings.widget[widget.id] || {},
             extruder = metadata.extruder || 0,
-            sliceHeight = spro.sliceHeight,
-            firstSliceHeight = isBelt ? sliceHeight : spro.firstSliceHeight,
-            nozzleSize = sdev.extruders[extruder].extNozzle,
-            lineWidth = spro.sliceLineWidth || nozzleSize,
-            fillOffsetMult = 1.0 - bound(spro.sliceFillOverlap, 0, 0.8),
+            sliceHeight = process.sliceHeight,
+            sliceHeightBase = (isBelt ? sliceHeight : process.firstSliceHeight) || sliceHeight,
+            nozzleSize = device.extruders[extruder].extNozzle,
+            lineWidth = process.sliceLineWidth || nozzleSize,
+            fillOffsetMult = 1.0 - bound(process.sliceFillOverlap, 0, 0.8),
             shellOffset = lineWidth,
             fillSpacing = lineWidth,
             fillOffset = lineWidth * fillOffsetMult,
-            sliceFillAngle = spro.sliceFillAngle,
-            supportDensity = spro.sliceSupportDensity,
+            sliceFillAngle = process.sliceFillAngle,
+            supportDensity = process.sliceSupportDensity,
             beltfact = Math.cos(Math.PI/4);
 
-        isFlat = ctrl.lineType === "flat";
-        isThin = !isFlat && ctrl.lineType === "line";
+        // override globals used by vopt()
+        isFlat = controller.lineType === "flat";
+        isThin = !isFlat && controller.lineType === "line";
         offset = lineWidth / 2;
 
         if (isFlat) {
@@ -111,61 +165,63 @@
             return ondone("invalid nozzle size");
         }
 
-        if (firstSliceHeight === 0) {
-            firstSliceHeight = sliceHeight;
-        }
+        const sliceMinHeight = process.sliceAdaptive && process.sliceMinHeight > 0 ?
+            Math.min(process.sliceMinHeight, sliceHeight) : 0;
 
-        const sliceMinHeight = spro.sliceAdaptive && spro.sliceMinHeight > 0 ?
-            Math.min(spro.sliceMinHeight, sliceHeight) : 0;
-
-        if (firstSliceHeight < sliceHeight) {
+        if (sliceHeightBase < sliceHeight) {
             DBUG.log("invalid first layer height < slice height");
             DBUG.log("reverting to min valid slice height");
-            firstSliceHeight = sliceMinHeight || sliceHeight;
+            sliceHeightBase = sliceMinHeight || sliceHeight;
         }
-
-        // const slicer = new KIRI.slicer2(widget.getPoints(), { });
-        // const levels = slicer.interval(sliceHeight, {
-        //     zlist: true,
-        //     zline: true,
-        //     boff: spro.firstSliceHeight || spro.sliceHeight
-        // });
-        // const slices = [];
-        // let last;
-        // slicer.slice(levels, { genso: true, each: (data, idx, tot, time) => {
-        //     const slice = data.slice;
-        //     if (last) {
-        //         slice.down = last;
-        //         last.up = slice;
-        //     }
-        //     last = slice;
-        //     slice.index = idx;
-        //     slice.height = spro.firstSliceHeight || spro.sliceHeight;
-        //     slices.push(slice);
-        //     onupdate((idx / tot) * 0.5);
-        // } });
-        // onSliceDone(slices);
 
         SLICER.sliceWidget(widget, {
+            mode: 'FDM',
             height: sliceHeight,
             minHeight: sliceMinHeight,
-            firstHeight: firstSliceHeight,
-            union: ctrl.healMesh,
+            firstHeight: sliceHeightBase,
+            union: controller.healMesh,
+            indices: process.indices,
+            concurrent: isConcurrent,
+            post: {
+                shellOffset,
+                fillOffset,
+                lineWidth,
+                vaseMode,
+                isSynth,
+                process,
+                isDanger
+            }
             // debug: true,
-            // xray: 3,
             // view: view,
-            indices: spro.indices
-        }, onSliceDone, onSliceUpdate);
-
-        function onSliceUpdate(update) {
+            // xray: 3,
+        }, slices => {
+            onSliceDone(slices).then(ondone);
+        }, update => {
             return onupdate(0.0 + update * 0.5);
+        });
+
+        async function doShadow(slices) {
+            if (widget.shadow) {
+                return;
+            }
+            // create shadow for clipping supports
+            let alltops = widget.group
+                .map(w => w.slices).flat()
+                .map(s => s.tops).flat().map(t => t.simple);
+            let shadow = isConcurrent ?
+                await KIRI.minions.union(alltops, 0.1) :
+                POLY.union(alltops, 0.1, true);
+            // expand shadow when requested (support clipping)
+            if (process.sliceSupportExtra) {
+                shadow = POLY.offset(shadow, process.sliceSupportExtra);
+            }
+            widget.shadow = POLY.setZ(shadow, 0);
+            // slices[0].output()
+            //     .setLayer('shadow', { line: 0xff0000, check: 0xff0000 })
+            //     .addPolys(shadow);
         }
 
-        function onSliceDone(slices) {
-            onSliceDoneAsync(slices).then(ondone);
-        }
-
-        async function onSliceDoneAsync(slices) {
+        async function onSliceDone(slices) {
             // remove all empty slices above part but leave below
             // for multi-part (multi-extruder) setups where the void is ok
             // also reverse because slicing occurs bottom-up
@@ -184,6 +240,16 @@
                 return;
             }
 
+            // attach range params to each slice
+            for (let slice of slices) {
+                slice.params = getRangeParameters(process, slice.index);
+            }
+
+            // create shadow for non-belt supports
+            if (!isBelt && (isSynth || (!isSynth && supportDensity && process.sliceSupportEnable))) {
+                await doShadow(slices);
+            }
+
             // for synth support widgets, merge tops
             if (isSynth) {
                 for (let slice of slices) {
@@ -196,7 +262,7 @@
                             slice.addTop(u);
                         }
                     }
-                    let gap = sliceHeight * (isBelt ? 0 : spro.sliceSupportGap);
+                    let gap = sliceHeight * (isBelt ? 0 : process.sliceSupportGap);
                     // clip tops to other widgets in group
                     tops = slice.topPolys();
                     for (let peer of widget.group) {
@@ -208,9 +274,9 @@
                             if (Math.abs(Math.abs(pslice.z - slice.z) - gap) > 0.1) {
                                 continue;
                             }
-                            // offset pslice tops by spro.sliceSupportOffset
+                            // offset pslice tops by process.sliceSupportOffset
                             if (!pslice.synth_off) {
-                                pslice.synth_off = POLY.offset(pslice.topPolys(), spro.sliceSupportOffset);
+                                pslice.synth_off = POLY.offset(pslice.topPolys(), process.sliceSupportOffset);
                             }
                             let ptops = pslice.synth_off;
                             let ntops = [];
@@ -219,17 +285,7 @@
                         }
                         // trim to group's shadow if not in belt mode
                         if (!isBelt) {
-                            let group = widget.group[0];
-                            if (!group.shadow) {
-                                let gs = [];
-                                for (let w of group) {
-                                    if (w.shadow) {
-                                        gs = POLY.union([w.shadow,...gs],null,0.1);
-                                    }
-                                }
-                                group.shadow = gs;
-                            }
-                            tops = POLY.setZ(POLY.trimTo(tops, group.shadow), slice.z);
+                            tops = POLY.setZ(POLY.trimTo(tops, widget.shadow), slice.z);
                         }
                     }
                     slice.tops = [];
@@ -241,7 +297,12 @@
 
             // calculate % complete and call onupdate()
             function doupdate(index, from, to, msg) {
-                onupdate(0.5 + (from + ((index/slices.length) * (to-from))) * 0.5, msg);
+                // onupdate(0.5 + (from + ((index/slices.length) * (to-from))) * 0.5, msg);
+                trackupdate(index / slices.length, from, to, msg);
+            }
+
+            function trackupdate(pct, from, to, msg) {
+                onupdate(0.5 + (from + (pct * (to - from))) * 0.5, msg);
             }
 
             // for each slice, performe a function and call doupdate()
@@ -252,8 +313,8 @@
                 });
             }
 
-            // do not hint polygin fill longer than a max span length
-            CONF.hint_len_max = UTIL.sqr(spro.sliceBridgeMax);
+            // do not hint polygon fill longer than a max span length
+            CONF.hint_len_max = UTIL.sqr(process.sliceBridgeMax);
 
             // reset for solids, support projections
             // and other annotations
@@ -263,67 +324,27 @@
                 slice.solids = [];
             });
 
-            let promises = ctrl.danger ? [] : undefined;
-            // create shells and diff inner fillable areas
-            forSlices(0.0, 0.15, slice => {
-                let params = slice.params = getRangeParameters(settings, slice.index);
-                let shellFrac = (params.sliceShells - (params.sliceShells | 0));
-                let sliceShells = params.sliceShells | 0;
-                if (ctrl.danger && shellFrac) {
-                    let v1 = shellFrac > 0.5 ? 1 - shellFrac : shellFrac;
-                    let v2 = 1 - v1;
-                    let parts = Math.round(v2/v1) + 1;
-                    let rem = slice.index % parts;
-                    let trg = shellFrac > 0.5 ? 1 : parts - 1;
-                    sliceShells += rem >= trg ? 1 : 0;
-                }
-                let first = slice.index === 0;
-                let isBottom = slice.index < spro.sliceBottomLayers;
-                let isTop = slice.index > slices.length - spro.sliceTopLayers-1;
-                let isDense = params.sliceFillSparse > 0.98;
-                let solidWidth = params.sliceFillWidth || 1;
-                let spaceMult = first ? spro.firstLayerLineMult || 1 : 1;
-                if ((isBottom || ((isTop || isDense) && !vaseMode)) && !isSynth) {
-                    slice.solid = {
-                        solidWidth,
-                        spaceMult
-                    };
-                }
-                let offset = shellOffset * spaceMult;
-                let fillOff = fillOffset * spaceMult;
-                let count = isSynth ? 1 : sliceShells;
-                doShells(slice, count, offset, fillOff, {
-                    vase: vaseMode,
-                    thin: spro.detectThinWalls && !isSynth,
-                    // widget: widget,
-                    danger: ctrl.danger
-                }, promises);
-            }, "shells");
-
-            if (promises) {
-                await Promise.all(promises);
-                // console.log('resolved', promises.length);
-            }
-
-            // just the top/bottom special solid layers
+            // just the top/bottom special solid layers or range defined solid layers
             forSlices(0.15, 0.2, slice => {
-                if (slice.solid) {
-                    let fillSpace = fillSpacing * slice.solid.spaceMult * slice.solid.solidWidth;
+                let range = slice.params;
+                let spaceMult = slice.index === 0 ? process.firstLayerLineMult || 1 : 1;
+                let isBottom = slice.index < process.sliceBottomLayers;
+                let isTop = slice.index > slices.length - process.sliceTopLayers - 1;
+                let isDense = range.sliceFillSparse > 0.98;
+                let isSolid = (isBottom || ((isTop || isDense) && !vaseMode)) && !isSynth;
+                let solidWidth = isSolid ? range.sliceFillWidth || 1 : 0;
+                if (solidWidth) {
+                    let fillSpace = fillSpacing * spaceMult * solidWidth;
                     doSolidLayerFill(slice, fillSpace, sliceFillAngle);
                 }
                 sliceFillAngle += 90.0;
-            }, "shells");
+            }, "solid layers");
 
-            // add lead in when specified in belt mode
-            if (!isSynth && isBelt) {
+            // add lead in anchor when specified in belt mode (but not for synths)
+            if (isBelt && !isSynth) {
                 // find adjusted zero point from slices
                 let smin = Infinity;
                 for (let slice of slices) {
-                    // skip empty / possible anchor
-                    // if (!slice.lines.length) {
-                    //     slice.belt = { miny: 0, touch: false };
-                    //     continue;
-                    // }
                     let miny = Infinity;
                     for (let poly of slice.topPolys()) {
                         let y = poly.bounds.maxy;
@@ -346,24 +367,26 @@
                             maxx = Math.max(maxx, poly.bounds.maxx);
                         }
                     }
+                    // mark slice as touching belt if near miny
                     if (Math.abs(slice.belt.miny - smin) < 0.01) {
                         slice.belt.touch = true;
                         if (!start) start = slice;
                     }
                 }
-                let offset = spro.firstLayerBeltLead * beltfact;
                 // ensure we start against a layer with shells
                 while (start.up && start.topShells().length === 0) {
                     start = start.up;
                 }
                 // if a brim applies, add that width to anchor
-                let brim = getRangeParameters(settings, 0).firstLayerBrim || 0;
+                let brim = getRangeParameters(process, 0).firstLayerBrim || 0;
                 if (brim) {
                     minx -= brim;
                     maxx += brim;
                 }
                 let adds = [];
-                while (offset && start && offset >= sliceHeight) {
+                // add enough lead in layers to fill anchor area
+                let anchorlen = process.firstLayerBeltLead * beltfact;
+                while (anchorlen && start && anchorlen >= sliceHeight) {
                     let addto = start.down;
                     if (!addto) {
                         addto = newSlice(start.z - sliceHeight);
@@ -388,10 +411,10 @@
                     let snew = addto.addTop(splat).fill_sparse = [ splat ];
                     adds.push(snew);
                     start = addto;
-                    offset -= sliceHeight;
+                    anchorlen -= sliceHeight;
                 }
                 // add anchor bump
-                let bump = spro.firstLayerBeltBump;
+                let bump = process.firstLayerBeltBump;
                 if (bump) {
                     adds = adds.reverse().slice(1, adds.length - 1);
                     let count = 1;
@@ -422,97 +445,118 @@
             }
 
             // calculations only relevant when solid layers are used
-            if (doSolidLayers) {
+            if (solidLayers && !vaseMode && !isSynth) {
+                profileStart("delta");
                 forSlices(0.2, 0.34, slice => {
-                    if (slice.index > 0) doDiff(slice, minSolid);
-                }, "diff");
+                    if (slice.index > 0) doDiff(slice, solidMinArea);
+                }, "layer deltas");
+                profileEnd();
+                profileStart("delta-project");
                 forSlices(0.34, 0.35, slice => {
                     projectFlats(slice, solidLayers);
                     projectBridges(slice, solidLayers);
-                }, "solids");
-                forSlices(0.35, 0.5, slice => {
-                    let params = getRangeParameters(settings, slice.index);
+                }, "layer deltas");
+                profileEnd();
+                profileStart("solid-fill")
+                let promises = isConcurrent ? [] : undefined;
+                forSlices(0.35, promises ? 0.4 : 0.5, slice => {
+                    let params = slice.params || process;
                     let first = slice.index === 0;
                     let solidWidth = params.sliceFillWidth || 1;
                     let spaceMult = first ? params.firstLayerLineMult || 1 : 1;
                     let fillSpace = fillSpacing * spaceMult * solidWidth;
-                    doSolidsFill(slice, fillSpace, sliceFillAngle, minSolid);
+                    doSolidsFill(slice, fillSpace, sliceFillAngle, solidMinArea, promises);
                     sliceFillAngle += 90.0;
-                }, "solids");
+                }, "fill solids");
+                if (promises) {
+                    await tracker(promises, (i, t) => {
+                        trackupdate(i / t, 0.4, 0.5);
+                    });
+                }
+                profileEnd();
             }
 
-            // sparse layers only present when non-vase mose and sparse % > 0
-            if (!isSynth) {
+            if (!isSynth && !vaseMode) {
+                // sparse layers only present when non-vase mose and sparse % > 0
                 let lastType;
-                forSlices(0.5, 0.7, slice => {
-                    let params = getRangeParameters(settings, slice.index);
-                    if (vaseMode || !params.sliceFillSparse) {
+                let promises = isConcurrent ? [] : undefined;
+                forSlices(0.5, promises ? 0.55 : 0.7, slice => {
+                    let params = slice.params || process;
+                    if (!params.sliceFillSparse) {
                         return;
                     }
                     let newType = params.sliceFillType;
                     doSparseLayerFill(slice, {
-                        settings: settings,
-                        process: spro,
-                        device: sdev,
-                        lineWidth: lineWidth,
+                        settings,
+                        process,
+                        device,
+                        lineWidth,
                         spacing: fillOffset,
                         density: params.sliceFillSparse,
                         bounds: widget.getBoundingBox(),
                         height: sliceHeight,
                         type: newType,
-                        cache: params._range !== true && lastType === newType
+                        cache: params._range !== true && lastType === newType && !isConcurrent,
+                        promises
                     });
                     lastType = newType;
                 }, "infill");
+                if (promises) {
+                    await tracker(promises, (i, t) => {
+                        trackupdate(i / t, 0.55, 0.7);
+                    });
+                }
             } else if (isSynth) {
-                forSlices(0.5, 0.7, slice => {
-                    let params = getRangeParameters(settings, slice.index);
+                // fill supports differently
+                let promises = isConcurrent ? [] : undefined;
+                forSlices(0.5, promises ? 0.6 : 0.7, slice => {
+                    let params = slice.params || process;
                     let density = params.sliceSupportDensity;
                     if (density)
                     for (let top of slice.tops) {
                         let offset = [];
                         POLY.expand(top.shells, -nozzleSize/4, slice.z, offset);
-                        fillSupportPolys(offset, lineWidth, density, slice.z);
+                        fillSupportPolys(promises, offset, lineWidth, density, slice.z);
                         top.fill_lines = offset.map(o => o.fill).flat().filter(v => v);
                     }
                 }, "infill");
+                if (promises) {
+                    await tracker(promises, (i, t) => {
+                        trackupdate(i / t, 0.6, 0.7);
+                    });
+                }
             }
 
             // auto support generation
-            if (!isBelt && !isSynth && supportDensity && spro.sliceSupportEnable) {
-                // create shadow for clipping supports
-                let shadow = null;
-                let alltops = slices.map(slice => slice.topPolys()).flat();
-                let alllen = alltops.map(p => p.deepLength).reduce((a,v)=>a+v);
-                if (alllen > 100000) {
-                    // console.log({alllen});
-                    alltops = alltops.map(p => p.clean(true, undefined, 5000));
-                    // console.log({reduced: alltops.map(p => p.deepLength).reduce((a,v)=>a+v)});
-                }
-                let mark = Date.now();
-                // shadow = POLY.union(alltops, 0.1, true);
-                shadow = await KIRI.minions.union(alltops, 0.1);
-                console.log({unioned_in: Date.now() - mark});
-                if (spro.sliceSupportExtra) {
-                    shadow = POLY.offset(shadow, spro.sliceSupportExtra);
-                }
-                widget.shadow = shadow;
-                // slices[0].output()
-                //     .setLayer('shadow', { line: 0xff0000, check: 0xff0000 })
-                //     .addPolys(shadow);
-                forSlices(0.7, 0.8, slice => {
-                    doSupport(slice, spro, shadow);
+            if (!isBelt && !isSynth && supportDensity && process.sliceSupportEnable) {
+                doShadow(slices);
+                profileStart("support");
+                let promises = [];
+                forSlices(0.7, 0.75, slice => {
+                    promises.push(doSupport(slice, process, widget.shadow, { exp: isDanger }));
                 }, "support");
-                forSlices(0.8, 0.9, slice => {
-                    doSupportFill(slice, lineWidth, supportDensity, spro.sliceSupportArea);
+                await tracker(promises, (i, t) => {
+                    trackupdate(i / t, 0.75, 0.8);
+                });
+                profileEnd();
+                profileStart("support-fill");
+                promises = false && isConcurrent ? [] : undefined;
+                forSlices(0.8, promises ? 0.88 : 0.9, slice => {
+                    doSupportFill(promises, slice, lineWidth, supportDensity, process.sliceSupportArea);
                 }, "support");
+                if (promises) {
+                    await tracker(promises, (i, t) => {
+                        trackupdate(i / t, 0.88, 0.9);
+                    });
+                }
+                profileEnd();
             }
 
             // render if not explicitly disabled
             if (render) {
                 forSlices(0.9, 1.0, slice => {
-                    let params = getRangeParameters(settings, slice.index);
-                    doRender(slice, isSynth, params, ctrl.devel);
+                    let params = slice.params || process;
+                    doRender(slice, isSynth, params, controller.devel);
                 }, "render");
             }
 
@@ -598,14 +642,13 @@
         // console.log(slice.index, slice.render.stats);
     }
 
-    // shared with SLA driver
+    // shared with SLA driver and minions
     FDM.share = {
         doShells,
         doTopShells,
         doDiff,
         projectFlats,
-        projectBridges,
-        doSolidsFill
+        projectBridges
     };
 
     /**
@@ -615,47 +658,25 @@
      * The last shell generated is a "fillOffset" shell.  Fill lines are clipped to
      * this polygon.  Adjusting fillOffset controls bonding of infill to the shells.
      *
+     * Most of this is done in slicePost() in FDM mode. now this is used by SLA, Laser
+     *
      * @param {number} count
      * @param {number} offsetN
      * @param {number} fillOffset
      * @param {Obejct} options
      */
-    function doShells(slice, count, offsetN, fillOffset, opt = {}, promises) {
-        let offset1 = offsetN / 2;
-
-        if (slice.index === 0) {
-            // console.log({slice_top_0: top_poly, count});
-            // segment polygon
-        }
-
-        if (promises) {
-            let oldtops = slice.tops;
-            let newtops = slice.tops = [];
-            oldtops.old = true;
-            for (let top of oldtops) {
-                promises.push(
-                    new Promise((resolve, reject) => {
-                        KIRI.minions.queue({
-                            cmd: "top.shells",
-                            z: slice.z, count, offset1, offsetN, fillOffset, opt,
-                            top: KIRI.codec.encode(top, {full: true})
-                        }, data => {
-                            let top = KIRI.codec.decode(data.top, {full: true});
-                            newtops.push(top);
-                            resolve();
-                        });
-                    })
-                );
-            }
-            newtops.new = true;
-        } else {
-            for (let top of slice.tops) {
-                doTopShells(slice.z, top, count, offset1, offsetN, fillOffset, opt);
-            }
+    function doShells(slice, count, offset1, offsetN, fillOffset, opt = {}) {
+        for (let top of slice.tops) {
+            doTopShells(slice.z, top, count, offset1, offsetN, fillOffset, opt);
         }
     }
 
     function doTopShells(z, top, count, offset1, offsetN, fillOffset, opt = {}) {
+        // pretend we're a top object in minions
+        if (!top.poly) {
+            top = { poly: top };
+        }
+
         let top_poly = [ top.poly ];
 
         if (opt.vase) {
@@ -775,6 +796,9 @@
 
         // for diffing
         top.last = last;
+        // top.last_simple = last.map(p => p.clean(true, undefined, CONF.clipper / 10));
+
+        return top;
     }
 
     /**
@@ -803,7 +827,7 @@
      * Take output from pluggable sparse infill algorithm and clip to
      * the bounds of the top polygons and their inner solid areas.
      */
-    function doSparseLayerFill(slice, options) {
+    function doSparseLayerFill(slice, options = {}) {
         let process = options.process,
             spacing = options.spacing,  // spacing space between fill lines
             density = options.density,  // density of infill 0.0 - 1.0
@@ -873,11 +897,11 @@
         target.newline();
 
         // prepare top infill structure
-        tops.forEach(function(top) {
+        for (let top of tops) {
             top.fill_sparse = top.fill_sparse || [];
             polys.appendAll(top.fill_off);
             polys.appendAll(top.solids);
-        });
+        }
 
         // update fill fingerprint for this slice
         slice._fill_finger = POLY.fingerprint(polys);
@@ -910,20 +934,20 @@
 
         // solid fill areas
         if (solids.length) {
-            tops.forEach(top => {
+            for (let top of tops) {
                 if (!top.fill_off) return;
                 let masks = top.fill_off.slice();
                 if (top.solids) {
                     masks = POLY.subtract(masks, top.solids, [], null, slice.z);
                 }
                 let angl = process.sliceFillAngle * ((slice.index % 2) + 1);
-                solids.forEach(solid => {
+                for (let solid of solids) {
                     let inter = [],
                         fillable = [];
-                    masks.forEach(mask => {
+                    for (let mask of masks) {
                         let p = solid.mask(mask);
                         if (p && p.length) inter.appendAll(p);
-                    });
+                    }
                     // offset fill area to accommodate trace
                     if (inter.length) {
                         POLY.expand(inter, -options.lineWidth/2, slice.z, fillable);
@@ -931,22 +955,27 @@
                     // fill intersected areas
                     if (inter.length) {
                         slice.isSparseFill = true;
-                        inter.forEach(p => {
+                        for (let p of inter) {
                             p.forEachSegment((p1, p2) => {
                                 top.fill_lines.push(p1, p2);
                             });
-                        });
+                        }
                     }
                     if (fillable.length) {
                         let lines = POLY.fillArea(fillable, angl, options.lineWidth);
                         top.fill_lines.appendAll(lines);
                     }
-                });
-            });
+                }
+            }
         }
 
         // if only solids were added and no lines to clip
         if (!sparse_clip) {
+            return;
+        }
+
+        if (options.promises) {
+            options.promises.push(KIRI.minions.clip(slice, polys, lines));
             return;
         }
 
@@ -955,15 +984,15 @@
         clip.AddPaths(POLY.toClipper(polys), ptyp.ptClip, true);
 
         if (clip.Execute(ctyp.ctIntersection, ctre, cfil.pftNonZero, cfil.pftEvenOdd)) {
-            ctre.m_AllPolys.forEach(function(node) {
+            for (let node of ctre.m_AllPolys) {
                 poly = POLY.fromClipperNode(node, slice.z);
-                tops.forEach(function(top) {
+                for (let top of tops) {
                     // use only polygons inside this top
                     if (poly.isInside(top.poly)) {
                         top.fill_sparse.push(poly);
                     }
-                });
-            });
+                }
+            }
         }
     };
 
@@ -1026,10 +1055,7 @@
      * fill projected areas and store line data
      * @return {boolean} true if filled, false if not
      */
-    function doSolidsFill(slice, spacing, angle, minArea) {
-
-        const render = slice.output();
-
+    function doSolidsFill(slice, spacing, angle, minArea, fillQ) {
         let minarea = minArea || 1,
             tops = slice.tops,
             solids = slice.solids;
@@ -1038,7 +1064,7 @@
             return;
         }
 
-        let unioned = POLY.union(solids, undefined, true).flat(), // TODO verify
+        let unioned = POLY.union(solids, undefined, true).flat(),
             isSLA = (spacing === undefined && angle === undefined);
 
         if (solids.length === 0) return false;
@@ -1048,15 +1074,15 @@
             inner = isSLA ? slice.topPolys() : slice.topFillOff();
 
         // trim each solid to the inner bounds
-        unioned.forEach(function(p) {
+        for (let p of unioned) {
             p.setZ(slice.z);
-            inner.forEach(function(i) {
+            for (let i of inner) {
                 let masks = p.mask(i);
                 if (masks && masks.length > 0) {
                     trims.appendAll(masks);
                 }
-            });
-        });
+            }
+        }
 
         // clear old solids and make array for new
         tops.forEach(top => { top.solids = [] });
@@ -1065,20 +1091,20 @@
         slice.solids = solids = trims;
 
         // parent each solid polygon inside the smallest bounding top
-        solids.forEach(function(solid) {
-            tops.forEach(function(top) {
+        for (let solid of solids) {
+            for (let top of tops) {
                 if (top.poly.overlaps(solid)) {
                     if (!solid.parent || solid.parent.area() > top.poly.area()) {
                         if (solid.areaDeep() < minarea) {
                             // console.log({i:slice.index,cull_solid:solid,area:solid.areaDeep()});
-                            return;
+                            continue;
                         }
                         solid.parent = top.poly;
                         top.solids.push(solid);
                     }
                 }
-            });
-        });
+            }
+        }
 
         // for SLA to bypass line infill
         if (isSLA) {
@@ -1086,16 +1112,16 @@
         }
 
         // create empty filled line array for each top
-        tops.forEach(function(top) {
+        for (let top of tops) {
             // synth belt anchor tops don't want fill
             if (!top.fill_lines) {
-                return;
+                continue;
             }
             const tofill = [];
             const angfill = [];
-            const newfill = [];
+            const newfill = top.fill_lines = [];
             // determine fill orientation from top
-            solids.forEach(function(solid) {
+            for (let solid of solids) {
                 if (solid.parent === top.poly) {
                     if (solid.fillang) {
                         angfill.push(solid);
@@ -1103,29 +1129,34 @@
                         tofill.push(solid);
                     }
                 }
-            });
+            }
             if (tofill.length > 0) {
-                fillArea(tofill, angle, spacing, newfill);
+                doFillArea(fillQ, tofill, angle, spacing, newfill);
                 top.fill_lines_norm = {angle:angle,spacing:spacing};
             }
             if (angfill.length > 0) {
                 top.fill_lines_ang = {spacing:spacing,list:[],poly:[]};
-                angfill.forEach(function(af) {
-                    fillArea([af], af.fillang.angle + 45, spacing, newfill);
+                for (let af of angfill) {
+                    doFillArea(fillQ, [af], af.fillang.angle + 45, spacing, newfill);
                     top.fill_lines_ang.list.push(af.fillang.angle + 45);
                     top.fill_lines_ang.poly.push(af.clone());
-                });
+                }
             }
-            top.fill_lines.appendAll(newfill);
-        });
+        }
+    }
 
-        return true;
-    };
+    function doFillArea(fillQ, polys, angle, spacing, output, minLen, maxLen) {
+        if (fillQ) {
+            fillQ.push(KIRI.minions.fill(polys, angle, spacing, output, minLen, maxLen));
+        } else {
+            POLY.fillArea(polys, angle, spacing, output, minLen, maxLen);
+        }
+    }
 
     /**
      * calculate external overhangs requiring support
      */
-    function doSupport(slice, proc, shadow) {
+    async function doSupport(slice, proc, shadow, opt = {}) {
         let maxBridge = proc.sliceSupportSpan || 5,
             minArea = proc.supportMinArea,
             pillarSize = proc.sliceSupportSize,
@@ -1133,12 +1164,14 @@
             gap = proc.sliceSupportGap,
             min = minArea || 0.01,
             size = (pillarSize || 1),
-            mergeDist = size * 3, // pillar merge dist
             tops = slice.topPolys(),
             trimTo = tops;
 
-        // create inner clip offset from tops
-        POLY.expand(tops, offset, slice.z, slice.offsets = []);
+        // create inner clip offset from tops (unless pre-computed)
+        if (!slice.offsets) {
+            // POLY.expand(tops, offset, slice.z, slice.offsets = []);
+            slice.offsets = geo.wasm.js.offset(tops, offset, slice.z);
+        }
 
         let traces = POLY.flatten(slice.topShells().clone(true)),
             fill = slice.topFill(),
@@ -1146,6 +1179,16 @@
             down = slice.down,
             down_tops = down ? down.topPolys() : null,
             down_traces = down ? POLY.flatten(down.topShells().clone(true)) : null;
+
+        if (opt.exp && down_tops) {
+            let points = down_tops.map(p => p.deepLength).reduce((a,v)=>a+v);
+            if (points > 200) {
+                // use de-rez'd top shadow instead
+                down_tops = down.topSimples();
+                // de-rez trace polys because it's not that important for supports
+                down_traces = down_traces.map(p => p.clean(true, undefined, CONF.clipper / 10));
+            }
+        }
 
         // check if point is supported by layer below
         function checkPointSupport(point) {
@@ -1213,7 +1256,11 @@
         }
 
         // then union supports
-        supports = POLY.union(supports, null, true);
+        if (supports.length > 10) {
+            supports = await KIRI.minions.union(supports);
+        } else {
+            supports = POLY.union(supports, null, true);
+        }
 
         // clip to top polys
         supports = POLY.trimTo(supports, shadow);
@@ -1225,7 +1272,10 @@
             let trimmed = [], culled = [];
 
             // clip supports to shell offsets
-            POLY.subtract(supports, down.topPolys(), trimmed, null, slice.z, min);
+            POLY.subtract(supports, down.topSimples(), trimmed, null, slice.z, min, {
+                prof: opt.prof,
+                wasm: false
+            });
 
             // set depth hint on support polys for infill density
             trimmed.forEach(function(trim) {
@@ -1253,7 +1303,7 @@
      * @param {number} density
      * @param {number} offset
      */
-    function doSupportFill(slice, linewidth, density, minArea) {
+    function doSupportFill(promises, slice, linewidth, density, minArea) {
         let supports = slice.supports,
             nsB = [],
             nsC = [],
@@ -1277,14 +1327,14 @@
         }
 
         if (supports) {
-            fillSupportPolys(supports, linewidth, density, slice.z);
+            fillSupportPolys(promises, supports, linewidth, density, slice.z);
         }
 
         // re-assign new supports back to slice
         slice.supports = supports;
     };
 
-    function fillSupportPolys(polys, linewidth, density, z) {
+    function fillSupportPolys(promises, polys, linewidth, density, z) {
         // calculate fill density
         let spacing = linewidth * (1 / density);
         polys.forEach(function (poly) {
@@ -1294,7 +1344,7 @@
             let inset = POLY.offset([poly], -linewidth/3, {flat: true, z});
             // do the fill
             if (inset && inset.length > 0) {
-                fillArea(inset, angle, spacing, poly.fill = []);
+                doFillArea(promises, inset, angle, spacing, poly.fill = []);
             }
             return true;
         });

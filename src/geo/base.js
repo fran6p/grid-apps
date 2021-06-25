@@ -31,7 +31,26 @@
             out.push(from);
         }
         return out;
-    };
+    }
+
+    /** track an array of promises as they all complete */
+    async function pwait(promises, tracker) {
+        let count = 0;
+        if (tracker)
+        for (let p of promises) {
+            p.then(data => {
+                tracker(count++, promises.length, data);
+            });
+        }
+        await Promise.all(promises);
+    }
+
+    /** return a promise that resolves after a given time */
+    function ptimer(time) {
+        return new Promise((resolve, reject) => {
+            setTimeout(resolve, time);
+        });
+    }
 
     function numOrDefault(num, def) {
         return num !== undefined ? num : def;
@@ -492,6 +511,8 @@
         time,
         round,
         area2,
+        pwait,
+        ptimer,
         center2d,
         center2pr,
         thetaDiff,

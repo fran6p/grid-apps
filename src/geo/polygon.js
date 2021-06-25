@@ -737,6 +737,7 @@
                 inner.move(offset);
             }
         }
+        return this;
     };
 
     /**
@@ -760,6 +761,7 @@
                 inner.scale(scale, round);
             }
         }
+        return this;
     };
 
     /**
@@ -1336,7 +1338,7 @@
      * @returns {number} perimeter length (sum of all segment lengths)
      */
     PRO.perimeter = function() {
-        if (this.perim !== 0.0) {
+        if (this.perim) {
             return this.perim;
         }
 
@@ -1749,6 +1751,37 @@
         return null;
     }
 
+    function leftmost(p1, p2) {
+        if (!p1) {
+            return p2;
+        }
+        if (p1.x <= p2.x) {
+            if (p1.x < p2.x || (p1.x === p2.x && p1.y < p2.y)) {
+                return p2;
+            }
+        }
+        return p1;
+    }
+
+    // return top-most, left-post point
+    PRO.leftmost = function() {
+        let tl = undefined;
+        for (let p of this.points) {
+            tl = leftmost(tl, p);
+        }
+        return tl;
+    };
+
+    PRO.areaDiff = function(poly) {
+        let a1 = this.area(),
+            a2 = poly.area();
+        return (a1 > a2) ? a2 / a1 : a1 / a2;
+    };
+
+    PRO.areaOrLength = function(poly) {
+        return this.length === poly.length || this.areaDiff(poly) > 0.98;
+    };
+
     /**
      * return logical OR of two polygons' enclosed areas
      *
@@ -1776,16 +1809,34 @@
             let union = POLY().fromClipperTreeUnion(ctre, poly.getZ(), minarea);
             if (all) {
                 if (union.length === 2) {
-                    // TODO look for faster equivalence check. area? perimeter?
-                    let src = [this, poly].sort((a,b) => { return a.area() - b.area() });
-                    let dst = union.sort((a,b) => { return a.area() - b.area() });
-                    if (src[0].isEquivalent(dst[0]) && src[1].isEquivalent(dst[1])) {
-                        return null;
+                    let src = [ this.leftmost(), poly.leftmost() ];
+                    let dst = [ union[0].leftmost(), union[1].leftmost() ];
+
+                    if (leftmost(src[0], src[1]) === src[1]) {
+                        src.reverse();
                     }
-                    // only here is area sorting failed (same sizes)
-                    if (src[0].isEquivalent(dst[1]) && src[1].isEquivalent(dst[0])) {
-                        return null;
+                    if (leftmost(dst[0], dst[1]) === dst[1]) {
+                        dst.reverse();
                     }
+
+                    if (
+                        src[0].isEqual2D(dst[0]) &&
+                        src[1].isEqual2D(dst[1]) &&
+                        src[0].poly.areaOrLength(dst[0].poly) &&
+                        src[1].poly.areaOrLength(dst[1].poly)
+                    ) {
+                        return null;
+                    // } else {
+                    //     console.log("union debug", {
+                    //         src,
+                    //         dst,
+                    //         d0: src[0].poly.areaDiff(dst[0].poly),
+                    //         d1: src[1].poly.areaDiff(dst[1].poly),
+                    //         m0: src[0].isEqual2D(dst[0]),
+                    //         m1: src[1].isEqual2D(dst[1])
+                    //     });
+                    }
+                    return null;
                 }
                 return union;
             }

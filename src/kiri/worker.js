@@ -8,7 +8,8 @@ let BASE = self.base,
     POLY = BASE.polygons,
     time = UTIL.time,
     qtpi = Math.cos(Math.PI/4),
-    concurrent = self.Worker ? navigator.hardwareConcurrency || 0 : 0,
+    ccvalue = navigator ? navigator.hardwareConcurrency || 0 : 0,
+    concurrent = self.Worker && ccvalue > 3 ? ccvalue - 1 : 0,
     current = self.worker = {
         print: null,
         snap: null
@@ -16,7 +17,9 @@ let BASE = self.base,
     wgroup = {},
     wcache = {},
     minions = [],
-    minionq = [];
+    minionq = [],
+    minifns = {},
+    miniseq = 0;
 
 // catch clipper alerts and convert to console messages
 self.alert = function(o) {
@@ -25,19 +28,35 @@ self.alert = function(o) {
 
 // start concurrent workers (minions)
 if (concurrent) {
-    for (let i=0; i < concurrent; i++) {
-        minions.push(new Worker(`/code/minion.js?${self.kiri.version}`));
+    function minhandler(msg) {
+        let data = msg.data;
+        let seq = data.seq;
+        let fn = minifns[seq];
+        if (!fn) {
+            throw `missing dispatch ${seq}`;
+        }
+        delete minifns[seq];
+        fn(data);
     }
-    console.log(`kiri | init mini | ${KIRI.version || "rogue"} | ${concurrent}`);
+
+    for (let i=0; i < concurrent; i++) {
+        let minion = new Worker(`/code/minion.js?${self.kiri.version}`);
+        minion.onmessage = minhandler;
+        minions.push(minion);
+    }
+    console.log(`kiri | init mini | ${KIRI.version || "rogue"} | ${concurrent + 1}`);
 }
 
 // for concurrent operations
 const minwork =
 KIRI.minions = {
+    concurrent,
+
     union: function(polys, minarea) {
         return new Promise((resolve, reject) => {
-            if (concurrent === 0 || polys.length * 2 < concurrent) {
-                resolve(POLY.union(polys, 0, true));
+            if (concurrent < 2 || polys.length < concurrent * 2 || POLY.points(polys) < concurrent * 50) {
+                resolve(POLY.union(polys, minarea, true));
+                return;
             }
             let polyper = Math.ceil(polys.length / concurrent);
             let running = 0;
@@ -46,7 +65,7 @@ KIRI.minions = {
                 let polys = KIRI.codec.decode(data.union);
                 union.appendAll(polys);
                 if (--running === 0) {
-                    resolve(POLY.union(union, 0, true));
+                    resolve(POLY.union(union, minarea, true));
                 }
             };
             for (let i=0; i<polys.length; i += polyper) {
@@ -60,8 +79,84 @@ KIRI.minions = {
         });
     },
 
-    queue: function(work, ondone) {
-        minionq.push({work, ondone});
+    fill: function(polys, angle, spacing, output, minLen, maxLen) {
+        return new Promise((resolve, reject) => {
+            if (concurrent < 2) {
+                resolve(POLY.fillArea(polys, angle, spacing, [], minLen, maxLen));
+                return;
+            }
+            minwork.queue({
+                cmd: "fill",
+                polys: KIRI.codec.encode(polys),
+                angle, spacing, minLen, maxLen
+            }, data => {
+                let arr = data.fill;
+                let fill = [];
+                for (let i=0; i<arr.length; ) {
+                    let pt = BASE.newPoint(arr[i++], arr[i++], arr[i++]);
+                    pt.index = arr[i++];
+                    fill.push(pt);
+                }
+                output.appendAll(fill);
+                resolve(fill);
+            });
+        });
+    },
+
+    clip: function(slice, polys, lines) {
+        return new Promise((resolve, reject) => {
+            if (concurrent < 2) {
+                reject("concurrent clip unavaiable");
+            }
+            minwork.queue({
+                cmd: "clip",
+                polys: POLY.toClipper(polys),
+                lines: lines.map(a => a.map(p => p.toClipper())),
+                z: slice.z
+            }, data => {
+                let polys = KIRI.codec.decode(data.clips);
+                for (let top of slice.tops) {
+                    for (let poly of polys) {
+                        if (poly.isInside(top.poly)) {
+                            top.fill_sparse.push(poly);
+                        }
+                    }
+                }
+                resolve(polys);
+            });
+        });
+    },
+
+    sliceBucket: function(bucket, options, output) {
+        return new Promise((resolve, reject) => {
+            if (concurrent < 2) {
+                reject("concurrent slice unavaiable");
+            }
+            let { points, slices } = bucket;
+            let i = 0, floatP = new Float32Array(points.length * 3);
+            for (let p of points) {
+                floatP[i++] = p.x;
+                floatP[i++] = p.y;
+                floatP[i++] = p.z;
+            }
+            minwork.queue({
+                cmd: "sliceBucket",
+                points: floatP,
+                slices,
+                options
+            }, data => {
+                let recs = KIRI.codec.decode(data.output);
+                for (let rec of recs) {
+                    let { params, data } = rec;
+                    output.push(KIRI.slicer.createSlice(params, data));
+                }
+                resolve(recs);
+            }, [ floatP.buffer ]);
+        });
+    },
+
+    queue: function(work, ondone, direct) {
+        minionq.push({work, ondone, direct});
         minwork.kick();
     },
 
@@ -69,12 +164,14 @@ KIRI.minions = {
         if (minions.length && minionq.length) {
             let qrec = minionq.shift();
             let minion = minions.shift();
-            minion.onmessage = (msg) => {
+            let seq = miniseq++;
+            qrec.work.seq = seq;
+            minifns[seq] = (data) => {
+                qrec.ondone(data);
                 minions.push(minion);
-                qrec.ondone(msg.data);
                 minwork.kick();
             };
-            minion.postMessage(qrec.work);
+            minion.postMessage(qrec.work, qrec.direct);
         }
     }
 };
@@ -382,6 +479,12 @@ KIRI.worker = {
             Object.assign(BASE.config, data.base);
         } else {
             console.log({invalid:data});
+        }
+        for (let minion of minions) {
+            minion.postMessage({
+                cmd: "config",
+                base: data.base
+            });
         }
         send.done({config: update});
     },
