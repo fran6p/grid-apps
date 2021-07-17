@@ -7,7 +7,6 @@
 
 * `P` duplicate objects should share same slice data unless rotated or scaled
 * `P` allow selection to be decimated on demand (context menu?)
-* `P` improve decimation speed: omit point conversion or use wasm
 * `P` explore widget vertex reloading / replacing (Onshape) (issue #48)
 * `P` move all persisted / workspace settings/data to IndexedDB (LS limitations)
 
@@ -42,7 +41,6 @@
 * `P` refactor skirt, brim, raft as synth widget instead of in path routing
 * `P` extruder + filament max flow rate cap in planner
 * `P` revisit path routing / optimization
-* `P` implement infill clipping in wasm
 * `P` solid fill the tops of supports for down facing flats
 
 # FDM - SLA
@@ -65,8 +63,6 @@
 
 * `B` tabs are not cut to exact height
 * `B` first rough step too far down in certain circumstances?
-* `B` trace open polys are not wound consistently?
-* `B` path routing with tabs sometimes makes no sense (still?)
 * `B` need to force cut line at synthetic z bottom (midlines, etc)
 
 * `F` limit cut depth to flute length of selected tool (or warn)
@@ -96,6 +92,7 @@
 * `F` gcode output option as zip for multiple or flip ops or tool change
 * `F` maintain several part orientations + op chains in a single profile
 
+* `P` port arc code from FDM export to CAM export
 * `P` common part pre-analyze to speed up 'slice' and improve shadow (overhangs)
 * `P` redo all path route / planning in prepare to account for terrain before camOut
 * `P` detect render message backlog and pause or warn?

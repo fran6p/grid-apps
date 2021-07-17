@@ -16,6 +16,8 @@
     FDM.export = function(print, online, ondone, ondebug) {
         let layers = print.output,
             settings = FDM.fixExtruders(print.settings),
+            controller = settings.controller,
+            thumbnails = controller.exportThumb,
             getRangeParameters = FDM.getRangeParameters,
             device = settings.device,
             extruders = device.extruders,
@@ -24,9 +26,10 @@
             gcodeTrack = device.gcodeTrack,
             gcodeExt = device.gcodeExt,
             gcodeInt = device.gcodeInt,
+            zMoveMax = device.deviceZMax || 0,
             tool = 0,
             fwRetract = device.fwRetract,
-            isDanger = settings.controller.danger,
+            isDanger = controller.danger,
             isBelt = device.bedBelt,
             bedType = isBelt ? "belt" : "fixed",
             extruder = extruders[tool],
@@ -204,6 +207,16 @@
         appendSub("; Bed left:{left} right:{right} top:{top} bottom:{bottom}");
         append(`; Bed type: ${bedType}`);
         append(`; Target: ${settings.filter[settings.mode]}`);
+        // inject thumbnail preview
+        if (thumbnails && worker.snap) {
+            let { width, height, url } = worker.snap;
+            let data = url.substring(url.indexOf(',') + 1);
+            append(`; thumbnail begin ${width} ${height} ${data.length}`);
+            for (let i=0; i<data.length; i += 78) {
+                append(`; ${data.substring(i, i + 78)}`);
+            }
+            append('; thumbnail end');
+        }
         append("; --- process ---");
         for (let pk in process) {
             append("; " + pk + " = " + process[pk]);
@@ -320,6 +333,9 @@
                 } else {
                     o.append(" E").append(newpos.e.toFixed(decimals));
                 }
+            }
+            if (zMoveMax && emit.z) {
+                rate = Math.min(zMoveMax, rate) * 60;
             }
             if (rate && rate != pos.f) {
                 o.append(" F").append(Math.round(rate));
@@ -446,7 +462,7 @@
                 speedMMM = (out.speed || process.outputFeedrate) * 60; // range
 
                 // emit gcode macro for changed print region
-                if (out.type !== last.type) {
+                if (last && out.type !== last.type) {
                     switch (out.type) {
                         case 'ext':
                             appendAllSub(gcodeExt);

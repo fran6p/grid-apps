@@ -142,6 +142,9 @@
         let control = settings().controller;
         let isDark = control.dark;
         let doAlert = UI.ortho.checked !== control.ortho;
+        if (control.assembly != UI.assembly.checked) {
+            KIRI.client.wasm(UI.assembly.checked);
+        }
         control.decals = UI.decals.checked;
         control.danger = UI.danger.checked;
         control.showOrigin = UI.showOrigin.checked;
@@ -154,10 +157,12 @@
         control.exportOcto = UI.exportOcto.checked;
         control.exportGhost = UI.exportGhost.checked;
         control.exportLocal = UI.exportLocal.checked;
+        control.exportThumb = UI.exportThumb.checked;
         control.exportPreview = UI.exportPreview.checked;
         control.decimate = UI.decimate.checked;
         control.healMesh = UI.healMesh.checked;
         control.threaded = UI.threaded.checked;
+        control.assembly = UI.assembly.checked;
         control.ortho = UI.ortho.checked;
         control.devel = UI.devel.checked;
         SPACE.view.setZoom(control.reverseZoom, control.zoomSpeed);
@@ -763,6 +768,7 @@
                 UI.deviceRound,
                 UI.deviceBelt,
                 UI.fwRetract,
+                UI.deviceZMax,
                 UI.gcodeFan,
                 UI.gcodeTrack,
                 UI.gcodeLayer,
@@ -1570,10 +1576,12 @@
             bedDepth:         UC.newInput(LANG.dv_bedd_s, {title:LANG.dv_bedd_l, convert:UC.toFloat, size:6, units:true, round:2}),
             maxHeight:        UC.newInput(LANG.dv_bedh_s, {title:LANG.dv_bedh_l, convert:UC.toFloat, size:6, modes:FDM_SLA}),
             spindleMax:       UC.newInput(LANG.dv_spmx_s, {title:LANG.dv_spmx_l, convert:UC.toInt, size: 6, modes:CAM}),
+            deviceZMax:       UC.newInput(LANG.dv_zmax_s, {title:LANG.dv_zmax_l, convert:UC.toInt, size: 6, modes:FDM}),
+            fdmSep:           UC.newBlank({class:"pop-sep", modes:FDM}),
+            fwRetract:        UC.newBoolean(LANG.dv_retr_s, onBooleanClick, {title:LANG.dv_retr_l, modes:FDM}),
             deviceOrigin:     UC.newBoolean(LANG.dv_orgc_s, onBooleanClick, {title:LANG.dv_orgc_l, modes:FDM_LASER_SLA}),
             deviceRound:      UC.newBoolean(LANG.dv_bedc_s, onBooleanClick, {title:LANG.dv_bedc_l, modes:FDM, trigger:true, show:isNotBelt}),
             deviceBelt:       UC.newBoolean(LANG.dv_belt_s, onBooleanClick, {title:LANG.dv_belt_l, modes:FDM, trigger:true, show:() => !UI.deviceRound.checked}),
-            fwRetract:        UC.newBoolean(LANG.dv_retr_s, onBooleanClick, {title:LANG.dv_retr_l, modes:FDM}),
 
             extruder:         UC.newGroup(LANG.dv_gr_ext, $('device2'), {group:"dext", inline:true, modes:FDM}),
             extFilament:      UC.newInput(LANG.dv_fila_s, {title:LANG.dv_fila_l, convert:UC.toFloat, modes:FDM}),
@@ -1637,6 +1645,7 @@
             exportOcto:       UC.newBoolean(`OctoPrint`, booleanSave),
             exportGhost:      UC.newBoolean(`Grid:Host`, booleanSave),
             exportLocal:      UC.newBoolean(`Grid:Local`, booleanSave),
+            exportThumb:      UC.newBoolean(`Thumbnail`, booleanSave, {modes:FDM}),
             exportPreview:    UC.newBoolean(`Code Preview`, booleanSave),
 
             parts:            UC.newGroup(LANG.pt_menu, $('prefs-prt'), {inline: true}),
@@ -1644,6 +1653,7 @@
             decimate:         UC.newBoolean(LANG.pt_deci_s, booleanSave, {title: LANG.pt_deci_l}),
             healMesh:         UC.newBoolean(LANG.pt_heal_s, booleanSave, {title: LANG.pt_heal_l}),
             threaded:         UC.newBoolean(LANG.pt_thrd_s, booleanSave, {title: LANG.pt_thrd_l, modes:FDM_SLA}),
+            assembly:         UC.newBoolean(LANG.pt_assy_s, booleanSave, {title: LANG.pt_assy_l, modes:FDM_SLA}),
 
             prefadd:          UC.checkpoint($('prefs-add')),
 
@@ -1718,7 +1728,8 @@
             sliceSupportArea:    UC.newInput(LANG.sp_area_s, {title:LANG.sp_area_l, bound:UC.bound(0.0,200.0), convert:UC.toFloat, modes:FDM}),
             sliceSupportExtra:   UC.newInput(LANG.sp_xpnd_s, {title:LANG.sp_xpnd_l, bound:UC.bound(0.0,200.0), convert:UC.toFloat, modes:FDM}),
             fdmSep:              UC.newBlank({class:"pop-sep", modes:FDM}),
-            sliceSupportAngle:   UC.newInput(LANG.sp_angl_s, {title:LANG.sp_angl_l, bound:UC.bound(0.0,90.0), convert:UC.toFloat, modes:FDM, xshow:isNotBelt}),
+            sliceSupportAngle:   UC.newInput(LANG.sp_angl_s, {title:LANG.sp_angl_l, bound:UC.bound(0.0,90.0), convert:UC.toFloat, modes:FDM, show:() => !UI.sliceSupportEnable.checked}),
+            sliceSupportSpan:    UC.newInput(LANG.sp_span_s, {title:LANG.sp_span_l, bound:UC.bound(0.0,200.0), convert:UC.toFloat, modes:FDM, show:() => UI.sliceSupportEnable.checked}),
             sliceSupportEnable:  UC.newBoolean(LANG.sp_auto_s, onBooleanClick, {title:LANG.sp_auto_l, modes:FDM, show:isNotBelt}),
 
             sliceSupportGen:     UC.newRow([
@@ -2435,6 +2446,7 @@
             UI.decimate.checked = control.decimate;
             UI.healMesh.checked = control.healMesh;
             UI.threaded.checked = control.threaded;
+            UI.assembly.checked = control.assembly;
             UI.ortho.checked = control.ortho;
             UI.devel.checked = control.devel;
             lineTypeSave();
@@ -2467,6 +2479,9 @@
 
             // update everything dependent on the platform size
             platform.update_size();
+
+            // load wasm if indicated
+            KIRI.client.wasm(control.assembly === true);
         };
 
         UI.sync();

@@ -173,11 +173,19 @@ KIRI.minions = {
             };
             minion.postMessage(qrec.work, qrec.direct);
         }
+    },
+
+    wasm: function(enable) {
+        for (let minion of minions) {
+            minion.postMessage({
+                cmd: "wasm",
+                enable
+            });
+        }
     }
 };
 
 console.log(`kiri | init work | ${KIRI.version || "rogue"}`);
-BASE.debug.disable();
 
 // code is running in the worker / server context
 const dispatch =
@@ -351,6 +359,19 @@ KIRI.worker = {
             send.data({update: (0.05 + update * 0.95), updateStatus: msg});
             last = now;
         });
+    },
+
+    sliceAll: function(data, send) {
+        const drivers = KIRI.driver;
+        const settings = data.settings;
+        const mode = settings.mode;
+        const driver = drivers[mode];
+
+        if (driver.sliceAll) {
+            driver.sliceAll(settings, send.data);
+        }
+
+        send.done({done: true});
     },
 
     prepare: function(data, send) {
@@ -728,6 +749,16 @@ KIRI.worker = {
         }).then(output => {
             send.done(output);
         });
+    },
+
+    wasm: function(data, send) {
+        if (data.enable) {
+            geo.enable();
+        } else {
+            geo.disable();
+        }
+        minwork.wasm(data.enable);
+        send.done({ wasm: data });
     }
 };
 

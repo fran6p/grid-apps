@@ -18,7 +18,7 @@
         newPoint = BASE.newPoint,
         numOrDefault = UTIL.numOrDefault;
 
-    BASE.polygons = {
+    const POLYS = BASE.polygons = {
         rayIntersect,
         alignWindings,
         setWinding,
@@ -314,7 +314,8 @@
             opt.prof.call = (opt.prof.call || 0) + 1;
         }
 
-        if (opt.wasm) {
+        // wasm diff currently doesn't seem to be any faster
+        if (false && opt.wasm && geo.wasm) {
             let oA = outA ? [] : undefined;
             let oB = outB ? [] : undefined;
             geo.wasm.js.diff(setA, setB, z, oA, oB);
@@ -377,8 +378,19 @@
      * @param {Polygon[]} polys
      * @returns {Polygon[]}
      */
-     function union(polys, minarea, all) {
+     function union(polys, minarea, all, opt = {}) {
          if (polys.length < 2) return polys;
+
+         if (opt.wasm && geo.wasm) {
+             let min = minarea || 0.01;
+             // let deepLength = polys.map(p => p.deepLength).reduce((a,v) => a+v);
+             // if (deepLength < 15000)
+             try {
+                 return geo.wasm.js.union(polys, polys[0].getZ()).filter(p => p.area() > min);
+             } catch (e) {
+                 console.log({union_fail: polys, minarea, all, deepLength});
+             }
+         }
 
          let out = polys.slice(), i, j, union, uset = [];
 
@@ -520,25 +532,31 @@
             fill = numOrDefault(opts.fill, ClipperLib.PolyFillType.pftNonZero),
             join = numOrDefault(opts.join, ClipperLib.JoinType.jtMiter),
             type = numOrDefault(opts.type, ClipperLib.EndType.etClosedPolygon),
-            coff = new ClipperLib.ClipperOffset(opts.miter, opts.arc),
-            ctre = new ClipperLib.PolyTree(),
             // if dist is array with values, shift out next offset
             offs = Array.isArray(dist) ? (dist.length > 1 ? dist.shift() : dist[0]) : dist,
             mina = numOrDefault(opts.minArea, 0.1),
             zed = opts.z || 0;
 
-        // setup offset
-        for (let poly of polys) {
-            // convert to clipper format
-            poly = poly.toClipper();
-            if (clean) poly = ClipperLib.Clipper.CleanPolygons(poly, CONF.clipperClean);
-            if (simple) poly = ClipperLib.Clipper.SimplifyPolygons(poly, fill);
-            coff.AddPaths(poly, join, type);
+        if (opts.wasm && geo.wasm) {
+            polys = geo.wasm.js.offset(polys, offs, zed, clean ? CONF.clipperClean : 0, simple ? 1 : 0);
+        } else {
+            let coff = new ClipperLib.ClipperOffset(opts.miter, opts.arc),
+                ctre = new ClipperLib.PolyTree();
+
+            // setup offset
+            for (let poly of polys) {
+                // convert to clipper format
+                poly = poly.toClipper();
+                if (clean) poly = ClipperLib.Clipper.CleanPolygons(poly, CONF.clipperClean);
+                if (simple) poly = ClipperLib.Clipper.SimplifyPolygons(poly, fill);
+                coff.AddPaths(poly, join, type);
+            }
+            // perform offset
+            coff.Execute(ctre, offs * CONF.clipper);
+            // convert back from clipper output format
+            polys = fromClipperTree(ctre, zed, null, null, mina);
         }
-        // perform offset
-        coff.Execute(ctre, offs * CONF.clipper);
-        // convert back from clipper output format
-        polys = fromClipperTree(ctre, zed, null, null, mina);
+
 
         // if specified, perform offset gap analysis
         if (opts.gaps && polys.length) {
@@ -583,15 +601,15 @@
      * as performing subtractive analysis between initial layer shell (ref)
      * and last offset (cmp) to produce gap candidates (for thinfill)
      */
-    function inset(polys, dist, count, z) {
+    function inset(polys, dist, count, z, wasm) {
         let total = count;
         let layers = [];
         let ref = polys;
         let depth = 0;
         while (count-- > 0 && ref && ref.length) {
-            let off = offset(ref, -dist, {z});
-            let mid = offset(off, dist / 2, {z});
-            let cmp = offset(off, dist, {z});
+            let off = offset(ref, -dist, {z, wasm});
+            let mid = offset(off, dist / 2, {z, wasm});
+            let cmp = offset(off, dist, {z, wasm});
             let gap = [];
             let aref = ref.map(p => p.areaDeep()).reduce((a,p) => a +p);
             let cref = cmp.length ? cmp.map(p => p.areaDeep()).reduce((a,p) => a + p) : 0;
@@ -637,6 +655,7 @@
 
         // ensure angle is in the -90:90 range
         angle = angle % 180;
+        while (angle < -90) angle += 180;
         while (angle > 90) angle -= 180;
 
         // X,Y ray slope derived from angle
@@ -745,9 +764,7 @@
         while (i < polygons.length) {
             let polygon = polygons[i++],
                 pp = polygon.points,
-                pl = pp.length,
-                dbug = BASE.debug,
-                debug = false;
+                pl = pp.length;;
             for (let j = 0; j < pl; j++) {
                 let j2 = (j + 1) % pl,
                     ip = UTIL.intersectRayLine(start, slope, pp[j], pp[j2]);
@@ -760,13 +777,9 @@
                     if (ip.isNear(pp[j], merge_dist)) {
                         ip.pos = j;
                         ip.mod = pl;
-                        if (debug) dbug.points([ip], 0x0000ff, 0.5, 1.0);
                     } else if (ip.isNear(pp[j2], merge_dist)) {
                         ip.pos = j2;
                         ip.mod = pl;
-                        if (debug) dbug.points([ip], 0x00ffff, 0.5, 0.85);
-                    } else {
-                        if (debug) dbug.points([ip], 0xff00ff, 0.5, 0.5);
                     }
                 }
             }
@@ -788,7 +801,7 @@
                      * was added later. see below for what else can happen.
                      */
                     if (line.length < 2) {
-                        dbug.log("sliceInt: line common ep fail: "+line.length);
+                        console.log("sliceInt: line common ep fail: "+line.length);
                     } else
                     if (line.length > 2) {
                         p1.del = true;
@@ -804,11 +817,9 @@
                         del = true;
                         p1.del = true;
                         p2.del = true;
-                        if (debug) dbug.points([p1, p2], 0xffffff, 0.2, 1);
                     } else {
                         del = true;
                         p1.del = true;
-                        if (debug) dbug.points([p1], 0xffff00, 0.2, 0.85);
                     }
                 }
                 return p1.dist - p2.dist; // sort on 'a' dist from ray origin
@@ -839,7 +850,6 @@
                             //    p1.del = true;
                             //    p2.del = true;
                             //    del = true;
-                            //    if (debug) dbug.points([p1, p2], 0xfff000, 0.2, 2);
                             //}
                             // check cull co-linear with group edge
                             if (same && p1.mod && p2.mod) {
@@ -848,7 +858,6 @@
                                     p1.del = true;
                                     p2.del = true;
                                     del = true;
-                                    if (debug) dbug.points([p1, p2], 0xffffff, 0.2, 1.85);
                                 }
                             }
                         }
@@ -875,34 +884,42 @@
         flatten(polys).sort((a,b) => {
             return a.area() > b.area();
         }).forEach(p => {
-            finger.push(p.area());
-            finger.push(p.perimeter());
-            finger.push(p.bounds);
+            finger.push({
+                c: p.circularityDeep(),
+                p: p.perimeterDeep(),
+                b: p.bounds
+            });
         });
         return finger;
     }
 
+    // compare fingerprint arrays
     function fingerprintCompare(a, b) {
+        // true if array is the same object
         if (a === b) {
             return true;
         }
+        // fail on missing array
         if (!a || !b) {
             return false;
         }
+        // require identical length arrays
         if (a.length !== b.length) {
             return false;
         }
-        for (let i=0; i<a.length; i += 3) {
-            if (Math.abs(a[i] - b[i]) > 0.001) {
+        for (let i=0; i<a.length; i++) {
+            let ra = a[i];
+            let rb = b[i];
+            // test circularity
+            if (Math.abs(ra.c - rb.c) > 0.0005) {
                 return false;
             }
-            if (Math.abs(a[i+1] - b[i+1]) > 0.0001) {
+            // test perimeter
+            if (Math.abs(ra.p - rb.p) > 0.001) {
                 return false;
             }
-            if (Math.abs(a[i+2].centerx() - b[i+2].centerx()) > 0.0001) {
-                return false;
-            }
-            if (Math.abs(a[i+2].centery() - b[i+2].centery()) > 0.0001) {
+            // test bounds
+            if (ra.b.delta(rb.b) > 0.001) {
                 return false;
             }
         }

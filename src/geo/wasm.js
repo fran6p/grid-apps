@@ -5,11 +5,18 @@
 // only active in workers
 if (!self.window) (function() {
 
-    if (!self.geo) self.geo = {};
+    if (!self.geo) self.geo = {
+        enable,
+        disable,
+        count: {
+            offset: 0,
+            union: 0,
+            diff: 0
+        }
+    };
 
     const factor = self.base.config.clipper;
     const geo = self.geo;
-    const debug = false;
 
     function log() {
         console.log(...arguments);
@@ -68,18 +75,20 @@ if (!self.window) (function() {
         return out;
     }
 
-    function polyOffset(polys, offset, z) {
+    function polyOffset(polys, offset, z, clean, simple) {
+        geo.count.offset++;
         let wasm = geo.wasm,
             buffer = geo.wasm.shared,
             pcount = writePolys(new DataWriter(wasm.heap, buffer), polys),
-            resat = wasm.fn.offset(buffer, pcount, offset * factor),
+            resat = wasm.fn.offset(buffer, pcount, offset * factor, clean, simple),
             out = readPolys(new DataReader(wasm.heap, resat), z);
         return polyNest(out);
     }
 
     function polyUnion(polys, z) {
+        geo.count.union++;
         let wasm = geo.wasm,
-        buffer = geo.wasm.shared,
+            buffer = geo.wasm.shared,
             pcount = writePolys(new DataWriter(wasm.heap, buffer), polys),
             resat = wasm.fn.union(buffer, pcount),
             out = readPolys(new DataReader(wasm.heap, resat), z);
@@ -87,8 +96,9 @@ if (!self.window) (function() {
     }
 
     function polyDiff(polysA, polysB, z, AB, BA) {
+        geo.count.diff++;
         let wasm = geo.wasm,
-        buffer = geo.wasm.shared,
+            buffer = geo.wasm.shared,
             writer = new DataWriter(wasm.heap, buffer),
             pcountA = writePolys(writer, polysA),
             pcountB = writePolys(writer, polysB),
@@ -130,62 +140,67 @@ if (!self.window) (function() {
         return tops;
     }
 
-    function runTests() {
-        let newPolygon = self.base.newPolygon;
-        let p1 = newPolygon().add(0,0).add(4,0).add(4,4).add(0,4);
-        let p2 = p1.clone().setZ(0).move({x:2, y:2});
-        let d1 = [];
-        let d2 = [];
-        geo.wasm.js.diff([p1], [p2], 0, d1, d2);
-        console.log('diff',{p1:p1.points, p2:p2.points, d1:d1[0].points, d2:d2[0].points});
-        let o1 = geo.wasm.js.offset([p1], 1, 0);
-        console.log('offs',{o1:o1[0].points});
+    function readString(pos, len) {
+        let view = new DataReader(geo.wasm.heap, pos);
+        let out = [];
+        while (len-- > 0) {
+            out.push(String.fromCharCode(view.readU8()));
+        }
+        return out.join('');
     }
 
-    fetch('/wasm/kiri-geo.wasm')
-        .then(response => response.arrayBuffer())
-        .then(bytes => WebAssembly.instantiate(bytes, {
-            env: {
-                polygon: (a,b) => { console.log('polygon',a,b) },
-                point: (a,b) => { console.log('point',a,b) },
-                abc:  (a,b,c) => { console.log('abc',a,b,c) }
-            },
-            wasi_snapshot_preview1: {
-                args_get: (count,bufsize) => { return 0 },
-                args_sizes_get: (count,bufsize) => { },
-                environ_get: (count,bufsize) => { return 0 },
-                environ_sizes_get: (count,bufsize) => { },
-                proc_exit: (code) => { return code }
-            }
-        }))
-        .then(results => {
-            let { module, instance } = results;
-            let { exports } = instance;
-            let heap = new DataView(exports.memory.buffer);
-            let wasm = geo.wasm = {
-                heap,
-                exports,
-                memory: exports.memory,
-                memmax: exports.memory.buffer.byteLength,
-                malloc: exports.mem_get,
-                free: exports.mem_clr,
-                set_debug: exports.set_debug
-            };
-            wasm.shared = wasm.malloc(1024 * 1024 * 10),
-            wasm.fn = {
-                diff: exports.poly_diff,
-                union: exports.poly_union,
-                offset: exports.poly_offset
-            };
-            wasm.js = {
-                diff: polyDiff,
-                union: polyUnion,
-                offset: polyOffset
-            };
-            if (debug) {
-                wasm.set_debug(1);
-                runTests();
-            }
-        });
+    function enable() {
+        if (geo.wasm || geo._wasm) {
+            return;
+        }
+        geo._wasm = 'loading';
+        fetch('/wasm/kiri-geo.wasm')
+            .then(response => response.arrayBuffer())
+            .then(bytes => WebAssembly.instantiate(bytes, {
+                env: {
+                    debug_string: (len, ptr) => { console.log('wasm', readString(ptr, len)) }
+                },
+                wasi_snapshot_preview1: {
+                    // args_get: (count,bufsize) => { return 0 },
+                    // args_sizes_get: (count,bufsize) => { },
+                    // environ_get: (count,bufsize) => { return 0 },
+                    // environ_sizes_get: (count,bufsize) => { },
+                    proc_exit: (code) => { return code }
+                }
+            }))
+            .then(results => {
+                // console.log({enabled: geo.wasm});
+                delete geo._wasm;
+                let { module, instance } = results;
+                let { exports } = instance;
+                let heap = new DataView(exports.memory.buffer);
+                let wasm = geo.wasm = {
+                    heap,
+                    exports,
+                    memory: exports.memory,
+                    memmax: exports.memory.buffer.byteLength,
+                    malloc: exports.mem_get,
+                    free: exports.mem_clr
+                };
+                wasm.shared = wasm.malloc(1024 * 1024 * 30),
+                wasm.fn = {
+                    diff: exports.poly_diff,
+                    union: exports.poly_union,
+                    offset: exports.poly_offset
+                };
+                wasm.js = {
+                    diff: polyDiff,
+                    union: polyUnion,
+                    offset: polyOffset
+                };
+            });
+    }
+
+    function disable() {
+        if (geo.wasm) {
+            delete geo.wasm;
+            // console.log({disabled: geo});
+        }
+    }
 
 })();

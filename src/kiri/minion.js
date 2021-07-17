@@ -93,12 +93,21 @@ const funcs = {
         }
         let output = [];
         for (let params of slices) {
+            let rec = KIRI.slicer.sliceZ(params.z, realp, options, params);
             output.push({
                 params,
-                data: { tops: KIRI.slicer.sliceZ(params.z, realp, options, params).tops }
+                data: { tops: rec.tops, clip: rec.clip }
             });
         }
         reply({ seq, output: CODEC.encode(output) });
+    },
+
+    wasm: data => {
+        if (data.enable) {
+            geo.enable();
+        } else {
+            geo.disable();
+        }
     },
 
     bad: (data, seq) => {

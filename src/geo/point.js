@@ -13,20 +13,13 @@
         ROUND = UTIL.round;
 
     class Point {
-        constructor(x,y,z,key,CP) {
-            if (CP) {
-                console.trace({x,y,z,key,CP});
-                throw "deprecated point constructor"
-            } else {
-                this.x = x;
-                this.y = y;
-                this.z = z || 0;
-                if (key) {
-                    this._key = key;
-                }
+        constructor(x,y,z,key) {
+            this.x = x;
+            this.y = y;
+            this.z = z || 0;
+            if (key) {
+                this._key = key;
             }
-            this.poly = null; // parent polygon
-            this.pos = 0; // position in group
         }
 
         get key() {
@@ -44,7 +37,9 @@
     const PRO = Point.prototype;
 
     BASE.Point = Point;
+
     BASE.newPoint = newPoint;
+
     BASE.pointFromClipper = function(cp, z) {
         return newPoint(cp.X / CONF.clipper, cp.Y / CONF.clipper, z);
     };
@@ -80,7 +75,10 @@
     };
 
     PRO.round = function(precision) {
-        return newPoint(ROUND(this.x,precision), ROUND(this.y,precision), ROUND(this.z,precision));
+        return newPoint(
+            this.x.round(precision),
+            this.y.round(precision),
+            this.z.round(precision));
     };
 
     PRO.addFacet = function(facet) {
@@ -91,7 +89,6 @@
 
     PRO.rekey = function() {
         this._key = undefined;
-        // this.key = [this.x,this.y,this.z].join(',');
     };
 
     PRO.toString = function() {
@@ -394,7 +391,9 @@
         let point = this, i;
         if (Array.isArray(poly)) {
             for (i=0; i<poly.length; i++) {
-                if (point.isInPolygonOnly(poly[i])) return true;
+                if (point.isInPolygonOnly(poly[i])) {
+                    return true;
+                }
             }
             return false;
         }
@@ -706,11 +705,10 @@
      * @param {number} y
      * @param {number} z
      * @param {String} [key]
-     * @param {Object} [CP] clipper point
      * @returns {Point}
      */
-    function newPoint(x, y, z, key, CP) {
-        return new Point(x, y, z, key, CP);
+    function newPoint(x, y, z, key) {
+        return new Point(x, y, z, key);
     }
 
 })();

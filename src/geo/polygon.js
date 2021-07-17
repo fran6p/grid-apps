@@ -9,7 +9,6 @@
     const BASE = self.base,
         CONF = BASE.config,
         UTIL = BASE.util,
-        DBUG = BASE.debug,
         KEYS = BASE.key,
         SQRT = Math.sqrt,
         POLY = function() { return BASE.polygons },
@@ -32,9 +31,10 @@
             this.id = seqid++; // polygon unique id
             this.open = false;
             this.points = []; // ordered array of points
-            this.parent = null; // enclosing parent polygon
             this.depth = 0; // depth nested from top parent (density for support fill)
-            if (points) this.addPoints(points);
+            if (points) {
+                this.addPoints(points);
+            }
         }
 
         get length() {
@@ -64,6 +64,7 @@
     }
 
     BASE.Polygon = Polygon;
+
     BASE.newPolygon = newPolygon;
 
     const PRO = Polygon.prototype;
@@ -475,7 +476,7 @@
         const pa = this.points,
             pln = pa.length,
             open = this.open,
-            newp = newPolygon(),
+            newp = newPolygon().copyZ(this.z),
             min = dist || BASE.config.precision_merge;
         let lo;
         newp.push(lo = pa[0]);
@@ -518,7 +519,7 @@
             redo |= ang[0] > 90;
         }
         if (redo) {
-            const newp = newPolygon();
+            const newp = newPolygon().copyZ(this.z);
             // newp.debug = this.debug = true;
             newp.open = open;
             for (let i=0; i<pln; i++) {
@@ -802,7 +803,7 @@
      * @returns {Polygon}
      */
     PRO.clone = function(deep) {
-        let np = newPolygon(),
+        let np = newPolygon().copyZ(this.z),
             ln = this.length,
             i = 0;
 
@@ -817,6 +818,25 @@
         }
 
         return np;
+    };
+
+    // special shallow for-render-or-read-only cloning
+    PRO.cloneZ = function(z, stop) {
+        let p = newPolygon();
+        p.z = z;
+        p.open = this.open;
+        p.points = this.points;
+        if (this.inner) {
+            p.inner = this.inner.map(p => p.cloneZ(z, true));
+        }
+        return p;
+    };
+
+    PRO.copyZ = function(z) {
+        if (z !== undefined) {
+            this.z = z;
+        }
+        return this;
     };
 
     /**
@@ -838,7 +858,7 @@
      * @returns {number} z value of first point
      */
     PRO.getZ = function(i) {
-        return this.points[i || 0].z;
+        return this.z !== undefined ? this.z : this.points[i || 0].z;
     };
 
     /**
@@ -1429,6 +1449,13 @@
     };
 
     /**
+     * shortcut to de-rez poly
+     */
+    PRO.simple = function() {
+        return this.clean(true, undefined, Math.min(CONF.clipper / 10, CONF.clipperClean * 5));
+    };
+
+    /**
      * simplify and merge collinear. only works for single
      * non-nested polygons.  used primarily in slicer/connectLines.
      */
@@ -1495,9 +1522,6 @@
      * @returns {?Polygon[]} returns output array provided as input or new array if not provided
      */
     PRO.offset = function(offset, output) {
-        // let offs = geo.poly.offset([this], -offset, this.getZ());
-        // if (output) output.appendAll(offs);
-        // return output || offs;
         return POLY().expand([this], -offset, this.getZ(), output);
     };
 
@@ -1836,7 +1860,6 @@
                     //         m1: src[1].isEqual2D(dst[1])
                     //     });
                     }
-                    return null;
                 }
                 return union;
             }

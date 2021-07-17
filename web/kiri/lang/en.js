@@ -93,6 +93,8 @@ kiri.lang['en-us'] = {
     dv_bedd_l:      "workspace units",
     dv_bedh_s:      "height",
     dv_bedh_l:      ["max build height","in workspace units"],
+    dv_zmax_s:      "Z axis speed limit",
+    dv_zmax_l:      ["maximum Z axis speed","in millimeters / second","0 to disable"],
     dv_spmx_s:      "max spindle",
     dv_spmx_l:      ["max spindle rpm speed","0 to disable"],
     dv_xtab_s:      "absolute positioning",
@@ -201,7 +203,7 @@ kiri.lang['en-us'] = {
     op_dang_s:      "experimental",
     op_dang_l:      "show experimental parameters",
     op_devl_s:      "developer",
-    op_devl_l:      "show developer options",
+    op_devl_l:      ["show developer options","enable developer debugging"],
     op_hopo_s:      "hover pop",
     op_hopo_l:      ["enable menu hover","to activate"],
     op_dark_s:      "dark mode",
@@ -244,6 +246,8 @@ kiri.lang['en-us'] = {
     pt_heal_l:      ["attempt to heal","non-manifold meshes","adds to slicing time"],
     pt_thrd_s:      "threaded",
     pt_thrd_l:      ["use parallel processing","when browser permits"],
+    pt_assy_s:      "assembly",
+    pt_assy_l:      ["use web assembly","when browser permits"],
 
     xp_menu:        "exports",
 
@@ -385,7 +389,7 @@ kiri.lang['en-us'] = {
     cc_feed_s:      "feed rate",
     cc_feed_l:      ["max cutting speed in","workspace units / second"],
     cc_plng_s:      "plunge rate",
-    cc_plng_l:      ["max z axis speed in","workspace units / minute"],
+    cc_plng_l:      ["max z axis speed in","workspace units / second"],
     cc_sngl_s:      "select lines only",
     cc_sngl_l:      ["select only single edges","instead of connected polylines"],
 
@@ -393,9 +397,9 @@ kiri.lang['en-us'] = {
     cc_menu:        "limits",
     cc_flip:        "flip",
     cc_rapd_s:      "xy feed",
-    cc_rapd_l:      ["max xy moves feedrate","in workspace units / minute"],
+    cc_rapd_l:      ["max xy moves feedrate","in workspace units / second"],
     cc_rzpd_s:      "z feed",
-    cc_rzpd_l:      ["max z moves feedrate","in workspace units / minute"],
+    cc_rzpd_l:      ["max z moves feedrate","in workspace units / second"],
 
     cc_loff_s:      "offset",
     cc_loff_l:      ["distance from stock face","for leveling pass","in workspace units"],

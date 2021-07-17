@@ -11,12 +11,9 @@ typedef int int32;
 using namespace ClipperLib;
 
 Uint8 *mem = 0;
-Uint8 debug = 0;
 
 extern "C" {
-    extern void polygon(Uint32 points, Uint32 inners);
-    extern void point(Uint32 x, Uint32 y);
-    extern void abc(Uint32 a, Uint32 b, Uint32 c);
+    extern void debug_string(Uint32 len, char *str);
 }
 
 struct length16 {
@@ -38,38 +35,43 @@ void mem_clr(Uint32 loc) {
     free((void *)loc);
 }
 
+void send_string(const char *format, ...) {
+    char buffer[100];
+    va_list args;
+    va_start(args, format);
+    Uint32 len =  vsprintf(buffer, format, args);
+    va_end(args);
+    debug_string(len, buffer);
+}
+
 Uint32 readPoly(Path &path, Uint32 pos) {
     struct length16 *ls = (struct length16 *)(mem + pos);
     Uint16 points = ls->length;
-    // if (debug) polygon(points, 0);
     pos += 2;
-    while (points-- > 0) {
+    while (points > 0) {
         struct point32 *ip = (struct point32 *)(mem + pos);
         pos += 8;
         path << IntPoint(ip->x, ip->y);
-        // if (debug) point(ip->x, ip->y);
+        points--;
     }
     return pos;
 }
 
 Uint32 readPolys(Paths &paths, Uint32 pos, Uint32 count) {
     Uint32 poly = 0;
-    // if (debug) abc(poly, count, pos);
-    while (count-- > 0) {
+    while (count > 0) {
         pos = readPoly(paths[poly++], pos);
+        count--;
     }
-    // if (debug) abc(poly, count, pos);
     return pos;
 }
 
 Uint32 writePolys(Paths &outs, Uint32 pos) {
     for (Path po : outs) {
-        // if (debug) polygon(po.size(), 1);
         struct length16 *ls = (struct length16 *)(mem + pos);
         ls->length = po.size();
         pos += 2;
         for (IntPoint pt : po) {
-            // if (debug) point(pt.X, pt.Y);
             struct point32 *ip = (struct point32 *)(mem + pos);
             ip->x = (int)pt.X;
             ip->y = (int)pt.Y;
@@ -83,8 +85,7 @@ Uint32 writePolys(Paths &outs, Uint32 pos) {
 }
 
 __attribute__ ((export_name("poly_offset")))
-Uint32 poly_offset(Uint32 memat, Uint32 polys, float offset) {
-
+Uint32 poly_offset(Uint32 memat, Uint32 polys, float offset, float clean, Uint8 simple) {
     Paths ins(polys);
     Paths outs;
     Uint32 pos = memat;
@@ -92,11 +93,17 @@ Uint32 poly_offset(Uint32 memat, Uint32 polys, float offset) {
 
     pos = readPolys(ins, pos, polys);
 
-    // clean and simplify polygons
-    // Paths cleans, simples;
-    // CleanPolygons(ins, cleans, 250);
-    // SimplifyPolygons(cleans, simples, pftNonZero);
-    // ins = simples;
+    if (clean > 0) {
+        Paths cleans;
+        CleanPolygons(ins, cleans, clean);
+        ins = cleans;
+    }
+
+    if (simple > 0) {
+        Paths simples;
+        SimplifyPolygons(ins, simples);
+        ins = simples;
+    }
 
     ClipperOffset co;
     co.AddPaths(ins, jtMiter, etClosedPolygon);
@@ -135,7 +142,7 @@ Uint32 poly_union(Uint32 memat, Uint32 polys, float offset) {
 }
 
 __attribute__ ((export_name("poly_diff")))
-Uint32 poly_diff(Uint32 memat, Uint32 polysA, Uint32 polysB, Uint8 AB, Uint8 BA, Uint32 clean) {
+Uint32 poly_diff(Uint32 memat, Uint32 polysA, Uint32 polysB, Uint8 AB, Uint8 BA, float clean) {
 
     Paths inA(polysA);
     Paths inB(polysB);
@@ -146,36 +153,37 @@ Uint32 poly_diff(Uint32 memat, Uint32 polysA, Uint32 polysB, Uint8 AB, Uint8 BA,
 
     Uint32 resat = pos;
 
-    if (AB) {
+    if (AB > 0) {
         Paths outs;
         Clipper clip;
         clip.AddPaths(inA, ptSubject, true);
         clip.AddPaths(inB, ptClip, true);
         clip.Execute(ctDifference, outs, pftEvenOdd, pftEvenOdd);
         if (clean > 0) {
-            CleanPolygons(outs, (double)clean);
+            // CleanPolygons(outs, clean);
+            for (Path po : outs) {
+                CleanPolygon(po, clean);
+            }
         }
         pos = writePolys(outs, pos);
         clip.Clear();
     }
 
-    if (BA) {
+    if (BA > 0) {
         Paths outs;
         Clipper clip;
         clip.AddPaths(inB, ptSubject, true);
         clip.AddPaths(inA, ptClip, true);
         clip.Execute(ctDifference, outs, pftEvenOdd, pftEvenOdd);
         if (clean > 0) {
-            CleanPolygons(outs, (double)clean);
+            // CleanPolygons(outs, clean);
+            for (Path po : outs) {
+                CleanPolygon(po, clean);
+            }
         }
         pos = writePolys(outs, pos);
         clip.Clear();
     }
 
     return resat;
-}
-
-__attribute__ ((export_name("set_debug")))
-void set_debug(Uint8 value) {
-    debug = value;
 }

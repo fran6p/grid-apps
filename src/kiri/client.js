@@ -203,6 +203,10 @@ KIRI.work = {
         });
     },
 
+    sliceAll: function(settings, callback) {
+        send("sliceAll", { settings }, callback);
+    },
+
     prepare: function(settings, update, done) {
         send("prepare", { settings }, function(reply) {
             if (reply.progress) {
@@ -286,6 +290,12 @@ KIRI.work = {
             } else {
                 output(reply);
             }
+        });
+    },
+
+    wasm: function(enable) {
+        send("wasm", {enable}, reply => {
+            // console.log({wasm_worker_said: reply});
         });
     }
 };

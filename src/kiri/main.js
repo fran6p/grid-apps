@@ -1,4 +1,4 @@
-/** Copyright Stewart Allen <sa@grid.space> -- All Rights Reserved */
+console.log/** Copyright Stewart Allen <sa@grid.space> -- All Rights Reserved */
 
 "use strict";
 
@@ -8,7 +8,6 @@
         KIRI    = self.kiri,
         BASE    = self.base,
         UTIL    = BASE.util,
-        DBUG    = BASE.debug,
         LANG    = KIRI.lang.current,
         WIN     = self.window,
         DOC     = self.document,
@@ -55,8 +54,6 @@
         grouping = false,
         saveTimer = null,
         noop = () => {};
-
-    DBUG.enable();
 
     // add show() to catalog for API
     CATALOG.show = showCatalog;
@@ -216,6 +213,16 @@
         gcode_decimals: (v) => { API.work.config({base:{gcode_decimals: v}}) }
     };
 
+    const devel = {
+        xray: (layers) => {
+            let proc = API.conf.get().process;
+            let size = proc.sliceHeight || 1;
+            layers = Array.isArray(layers) ? layers : [ layers ];
+            proc.xray = layers.map(l => l * size + size / 2);
+            API.function.slice();
+        }
+    };
+
     const API = KIRI.api = {
         ui: UI,
         uc: UC,
@@ -256,6 +263,7 @@
             STACKS,
             SPACE
         },
+        devel,
         var: {
             layer_lo: 0,
             layer_hi: 0,
@@ -984,8 +992,8 @@
     function prepareSlices(callback, scale = 1, offset = 0) {
         if (viewMode == VIEWS.ARRANGE) {
             let snap = SPACE.screenshot();
-            API.view.snapshot = snap.substring(snap.indexOf(",")+1);
-            KIRI.work.snap(API.view.snapshot);
+            API.view.snapshot = snap.substring(snap.indexOf(",") + 1);
+            KIRI.work.snap(SPACE.screenshot2());
         }
         if (MODE === MODES.SLA && !callback) {
             callback = preparePreview;
@@ -1002,7 +1010,6 @@
         API.event.emit('slice.begin', getMode());
 
         let slicing = WIDGETS.slice().filter(w => !w.track.ignore),
-            countdown = slicing.length,
             totalProgress,
             track = {},
             mode = settings.mode,
@@ -1029,16 +1036,29 @@
             segNumber = 0,
             errored = false,
             startTime = Date.now(),
+            toSlice = slicing.slice(),
+            camOrLaser = mode === 'CAM' || mode === 'LASER',
             lastMsg;
 
-        // for each widget, slice
-        for (let widget of slicing) {
-            let camOrLaser = mode === 'CAM' || mode === 'LASER',
-                stack = widget.stack = STACKS.create(widget.id, widget.mesh),
-                factor = (widget.getVertices().count / defvert);
-
+        for (let widget of toSlice) {
             widget.stats.progress = 0;
             widget.setColor(color.slicing);
+        }
+
+        sliceNext();
+
+        function sliceNext() {
+            if (toSlice.length) {
+                sliceWidget(toSlice.shift())
+            } else {
+                KIRI.client.sliceAll(settings, sliceDone);
+            }
+        }
+
+        function sliceWidget(widget) {
+            widget.stack = STACKS.create(widget.id, widget.mesh),
+                factor = (widget.getVertices().count / defvert);
+
             widget.slice(settings, function(sliced, error) {
                 widget.rotinfo = null;
                 let mark = Date.now();
@@ -1059,52 +1079,12 @@
                     KIRI.client.restart();
                     API.event.emit('slice.error', error);
                 }
-                // discard remaining errors
                 if (errored) {
-                    return;
-                }
-                let alert = null;
-                // on the last exit, update ui and call the callback
-                if (--countdown === 0) {
-                    if (scale === 1 && feature.work_alerts) {
-                        alert = API.show.alert("Rendering");
-                    };
-                    KIRI.client.unrotate(settings, () => {
-                        for (let widget of slicing) {
-                            // on done
-                            segtimes[`${widget.id}_${segNumber++}_draw`] = widget.render(widget.stack);
-                            // rotate stack for belt beds
-                            if (widget.rotinfo) {
-                                widget.stack.obj.rotate(widget.rotinfo);
-                            }
-                            if (scale === 1) {
-                                // clear wireframe
-                                widget.setWireframe(false, color.wireframe, color.wireframe_opacity);
-                                widget.setOpacity(camOrLaser ? color.cam_sliced_opacity : color.sliced_opacity);
-                                widget.setColor(color.deselected);
-                                API.hide.alert(alert);
-                            }
-                        }
-                        updateSliderMax(true);
-                        setVisibleLayer(-1, 0);
-                        if (scale === 1) {
-                            updateStackLabelState();
-                        }
-                    });
-                    if (scale === 1) {
-                        API.show.progress(0);
-                    }
-                    // cause visuals to update
-                    SPACE.scene.active();
-                    // mark slicing complete for prep/preview
-                    complete.slice = true;
-                    API.event.emit('slice.end', getMode());
-                    // print stats
-                    segtimes.total = Date.now() - now;
-                    DBUG.log(segtimes);
-                    if (callback && typeof callback === 'function') {
-                        callback();
-                    }
+                    // terminate slicing
+                    sliceDone();
+                } else {
+                    // start next widget slice
+                    sliceNext();
                 }
             }, function(update, msg) {
                 if (msg && msg !== lastMsg) {
@@ -1123,6 +1103,49 @@
                 }
                 API.show.progress(offset + (totalProgress / WIDGETS.length) * scale, msg);
             });
+        }
+
+        function sliceDone() {
+            let alert = null;
+            if (scale === 1 && feature.work_alerts) {
+                alert = API.show.alert("Rendering");
+            };
+            KIRI.client.unrotate(settings, () => {
+                for (let widget of slicing) {
+                    // on done
+                    segtimes[`${widget.id}_${segNumber++}_draw`] = widget.render(widget.stack);
+                    // rotate stack for belt beds
+                    if (widget.rotinfo) {
+                        widget.stack.obj.rotate(widget.rotinfo);
+                    }
+                    if (scale === 1) {
+                        // clear wireframe
+                        widget.setWireframe(false, color.wireframe, color.wireframe_opacity);
+                        widget.setOpacity(camOrLaser ? color.cam_sliced_opacity : color.sliced_opacity);
+                        widget.setColor(color.deselected);
+                        API.hide.alert(alert);
+                    }
+                }
+                updateSliderMax(true);
+                setVisibleLayer(-1, 0);
+                if (scale === 1) {
+                    updateStackLabelState();
+                }
+            });
+            if (scale === 1) {
+                API.show.progress(0);
+            }
+            // cause visuals to update
+            SPACE.scene.active();
+            // mark slicing complete for prep/preview
+            complete.slice = true;
+            API.event.emit('slice.end', getMode());
+            // print stats
+            segtimes.total = Date.now() - now;
+            console.log(segtimes);
+            if (callback && typeof callback === 'function') {
+                callback();
+            }
         }
     }
 
@@ -1216,7 +1239,7 @@
 
             // print stats
             segtimes.total = Date.now() - now;
-            DBUG.log(segtimes);
+            console.log(segtimes);
 
             API.event.emit('print', pMode);
             API.event.emit('preview.end', pMode);
@@ -2468,7 +2491,7 @@
 
     function loadFile() {
         $('load-file').onchange = function(event) {
-            DBUG.log(event);
+            console.log(event);
             platformLoadFiles(event.target.files);
         };
         $('load-file').click();
@@ -2893,16 +2916,12 @@
                 setWidgetVisibility(true);
                 break;
             default:
-                DBUG.log("invalid view mode: "+mode);
+                console.log("invalid view mode: "+mode);
                 return;
         }
         API.event.emit('view.set', mode);
         DOC.activeElement.blur();
     }
-
-    // function setExpert(bool) {
-    //     UC.setExpert(UI.expert.checked = settings.controller.expert = bool);
-    // }
 
     function getMode() {
         return settings.mode;
@@ -2918,7 +2937,7 @@
 
     function setMode(mode, lock, then) {
         if (!MODES[mode]) {
-            DBUG.log("invalid mode: "+mode);
+            console.log("invalid mode: "+mode);
             mode = 'FDM';
         }
         // change mode constants
